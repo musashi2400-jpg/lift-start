@@ -1,0 +1,48 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+pnpm-lock.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Logs
+*.log
+server.log
+nohup.out
+
+# Temporary files
+*.tmp
+.tmp/
+temp/
+
+# Backups
+*-backup/
+*-backup.js
+*.backup
+
+# Build artifacts
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sensitive data
+.env.production
+.env.staging
+secrets.json
