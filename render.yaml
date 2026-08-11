@@ -2,18 +2,14 @@ services:
   - type: web
     name: lift-start
     env: node
-    plan: starter
+    plan: free
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
       - key: DATABASE_URL
-        fromDatabase:
-          name: lift-start-db
-          property: connectionString
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: STRIPE_SECRET_KEY
@@ -23,8 +19,8 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: JWT_SECRET
-        sync: false
+        generateValue: true
       - key: ADMIN_KEY
-        sync: false
+        generateValue: true
       - key: FRONTEND_URL
         value: https://lift-start.onrender.com
