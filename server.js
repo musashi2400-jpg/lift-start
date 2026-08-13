@@ -201,17 +201,17 @@ async function generateAIAnalysis(shopName, industry, issues) {
     });
 
     if (!response.ok) {
-      let errorBody = '';
+      let errorText = '';
       try {
-        errorBody = await response.text();
+        errorText = await response.text();
+        const errJson = JSON.parse(errorText);
+        console.error(`🔍 OpenAI API Diagnostic -> status: ${response.status}, code: ${errJson.error?.code}, type: ${errJson.error?.type}, message: ${errJson.error?.message}`);
       } catch (e) {
-        errorBody = 'Unable to parse error body';
+        console.error(`🔍 OpenAI API Diagnostic -> status: ${response.status}, rawText: ${errorText}`);
       }
-      console.error(`❌ OpenAI API error status: ${response.status}, body: ${errorBody}`);
       return {
         error: 'AI API error',
         message: `AIサービスへの接続に失敗しました（ステータス: ${response.status}）。管理者設定を確認してください。`,
-        details: errorBody,
         aiUsed: false
       };
     }
