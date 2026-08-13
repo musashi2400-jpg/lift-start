@@ -19,6 +19,20 @@ import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
 import Stripe from 'stripe';
 import pkg from 'pg';
+import {
+  initializeDatabase,
+  createUser,
+  getUserByEmail,
+  getUserById,
+  updateUserPlan,
+  createDiagnosis,
+  incrementDiagnosisCount,
+  createSubscription,
+  recordPayment,
+  recordAnalyticsEvent,
+  getStatistics,
+  getAllUsers
+} from './db.js';
 
 const { Pool } = pkg;
 
@@ -313,34 +327,25 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    const existingUser = await getUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ error: 'このメールアドレスは既に登録されています' });
+    }
+
     const hashedPassword = await bcryptjs.hash(password, 10);
-    const userId = uuidv4();
+    const newUser = await createUser(email, hashedPassword, shopName, industry || '美容室', websiteUrl || '');
+    
+    trackConversion('signup', newUser.id);
 
-    const user = {
-      id: userId,
-      email,
-      password: hashedPassword,
-      shopName,
-      industry,
-      websiteUrl,
-      plan: 'free',
-      diagnosisCount: 0,
-      diagnosisLimit: 1,
-      createdAt: new Date()
-    };
-
-    memoryDB.users.push(user);
-    trackConversion('signup', userId);
-
-    const token = generateToken(userId);
+    const token = generateToken(newUser.id);
 
     res.json({
       token,
       user: {
-        id: user.id,
-        email: user.email,
-        shopName: user.shopName,
-        plan: user.plan
+        id: newUser.id,
+        email: newUser.email,
+        shopName: newUser.shop_name || shopName,
+        plan: newUser.plan || 'free'
       }
     });
   } catch (error) {
@@ -358,12 +363,12 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Missing email or password' });
     }
 
-    const user = memoryDB.users.find(u => u.email === email);
+    const user = await getUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const isPasswordValid = await bcryptjs.compare(password, user.password);
+    const isPasswordValid = await bcryptjs.compare(password, user.password_hash);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -376,7 +381,7 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        shopName: user.shopName,
+        shopName: user.shop_name,
         plan: user.plan
       }
     });
@@ -389,39 +394,56 @@ app.post('/api/auth/login', async (req, res) => {
 // 4. AI Diagnosis
 app.post('/api/diagnosis', authMiddleware, async (req, res) => {
   try {
-    const user = memoryDB.users.find(u => u.id === req.userId);
+    const user = await getUserById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     const { shopName, industry, issues } = req.body;
 
     trackConversion('diagnosis_start', req.userId);
 
-    if (user.diagnosisCount >= user.diagnosisLimit && user.plan === 'free') {
+    const diagnosisCount = user.diagnosis_count !== undefined ? user.diagnosis_count : user.diagnosisCount;
+    const diagnosisLimit = user.diagnosis_limit !== undefined ? user.diagnosis_limit : user.diagnosisLimit;
+
+    if (diagnosisCount >= diagnosisLimit && user.plan === 'free') {
       return res.status(403).json({
         error: 'Diagnosis limit reached',
         message: 'Free plan allows 1 diagnosis. Please upgrade to continue.'
       });
     }
 
-    const analysis = await generateAIAnalysis(shopName, industry, issues);
+    const analysis = await generateAIAnalysis(shopName || user.shop_name, industry || user.industry, issues);
 
     if (analysis.error) {
       return res.status(500).json(analysis);
     }
 
-    const diagnosis = {
-      id: uuidv4(),
-      userId: req.userId,
-      shopName,
-      industry,
-      ...analysis,
-      createdAt: new Date()
-    };
+    const diagnosisRecord = await createDiagnosis(
+      req.userId,
+      shopName || user.shop_name,
+      industry || user.industry,
+      issues ? [issues] : [],
+      analysis,
+      analysis.aiUsed || false
+    );
 
-    user.diagnosisCount += 1;
-    memoryDB.diagnoses.push(diagnosis);
+    await incrementDiagnosisCount(req.userId);
 
     trackConversion('diagnosis_complete', req.userId);
 
-    res.json(diagnosis);
+    res.json({
+      id: diagnosisRecord.id,
+      userId: req.userId,
+      shopName: diagnosisRecord.shop_name,
+      industry: diagnosisRecord.industry,
+      issues: diagnosisRecord.issues,
+      improvements: diagnosisRecord.improvements,
+      opportunities: diagnosisRecord.opportunities,
+      expectedResults: diagnosisRecord.expected_results,
+      aiUsed: diagnosisRecord.ai_used,
+      createdAt: diagnosisRecord.created_at
+    });
   } catch (error) {
     console.error('Diagnosis error:', error);
     res.status(500).json({ error: 'Failed to generate diagnosis' });
@@ -429,9 +451,9 @@ app.post('/api/diagnosis', authMiddleware, async (req, res) => {
 });
 
 // 5. Get User Info
-app.get('/api/user', authMiddleware, (req, res) => {
+app.get('/api/user', authMiddleware, async (req, res) => {
   try {
-    const user = memoryDB.users.find(u => u.id === req.userId);
+    const user = await getUserById(req.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -439,10 +461,10 @@ app.get('/api/user', authMiddleware, (req, res) => {
     res.json({
       id: user.id,
       email: user.email,
-      shopName: user.shopName,
+      shopName: user.shop_name,
       plan: user.plan,
-      diagnosisCount: user.diagnosisCount,
-      diagnosisLimit: user.diagnosisLimit
+      diagnosisCount: user.diagnosis_count !== undefined ? user.diagnosis_count : user.diagnosisCount,
+      diagnosisLimit: user.diagnosis_limit !== undefined ? user.diagnosis_limit : user.diagnosisLimit
     });
   } catch (error) {
     console.error('User retrieval error:', error);
