@@ -201,10 +201,17 @@ async function generateAIAnalysis(shopName, industry, issues) {
     });
 
     if (!response.ok) {
-      console.error(`❌ OpenAI API error: ${response.status}`);
+      let errorBody = '';
+      try {
+        errorBody = await response.text();
+      } catch (e) {
+        errorBody = 'Unable to parse error body';
+      }
+      console.error(`❌ OpenAI API error status: ${response.status}, body: ${errorBody}`);
       return {
         error: 'AI API error',
-        message: `OpenAI API returned status ${response.status}`,
+        message: `AIサービスへの接続に失敗しました（ステータス: ${response.status}）。管理者設定を確認してください。`,
+        details: errorBody,
         aiUsed: false
       };
     }
