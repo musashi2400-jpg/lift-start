@@ -83,66 +83,7 @@ function validateEnvironment() {
 
 validateEnvironment();
 
-// ============================================================
-// Database Setup
-// ============================================================
-
-let pool = null;
-let useMemoryDB = false;
-
-function initializeDatabase() {
-  if (DATABASE_URL) {
-    try {
-      pool = new Pool({
-        connectionString: DATABASE_URL,
-        ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
-      });
-
-      pool.on('error', (err) => {
-        console.error('❌ Database pool error:', err);
-      });
-
-      console.log('✅ PostgreSQL connected');
-      return true;
-    } catch (error) {
-      console.error('❌ Database initialization error:', error);
-      if (NODE_ENV === 'production') {
-        process.exit(1);
-      }
-      useMemoryDB = true;
-      console.warn('⚠️ Falling back to memory database (development only)');
-      return false;
-    }
-  } else {
-    console.warn('⚠️ DATABASE_URL not set. Using memory database (development only)');
-    useMemoryDB = true;
-    return false;
-  }
-}
-
-// In-memory database fallback (development only)
-const memoryDB = {
-  users: [],
-  diagnoses: [],
-  subscriptions: [],
-  payments: [],
-  events: []
-};
-
-async function queryDB(text, params = []) {
-  if (!pool || useMemoryDB) {
-    console.warn('⚠️ Using memory database - data will not persist');
-    return [];
-  }
-
-  try {
-    const result = await pool.query(text, params);
-    return result.rows;
-  } catch (error) {
-    console.error('❌ Database query error:', error);
-    throw error;
-  }
-}
+// Database Setup is fully delegated to db.js
 
 // ============================================================
 // Stripe Setup
@@ -312,7 +253,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     environment: NODE_ENV,
-    database: pool ? 'PostgreSQL' : 'Memory',
+    database: process.env.DATABASE_URL ? 'PostgreSQL' : 'Memory',
     openai: OPENAI_API_KEY ? 'Configured' : 'Not configured',
     stripe: stripe ? 'Configured' : 'Not configured'
   });
@@ -349,8 +290,8 @@ app.post('/api/auth/register', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    console.error('❌ Registration error detail:', error);
+    res.status(500).json({ error: 'Registration failed: ' + error.message });
   }
 });
 
@@ -624,7 +565,7 @@ async function startServer() {
       console.log(`🚀 LIFT. START running on http://localhost:${PORT}`);
       console.log(`${'='.repeat(60)}`);
       console.log(`Environment: ${NODE_ENV}`);
-      console.log(`Database: ${pool ? 'PostgreSQL' : 'Memory (development only)'}`);
+      console.log(`Database: ${process.env.DATABASE_URL ? 'PostgreSQL' : 'Memory (development only)'}`);
       console.log(`OpenAI: ${OPENAI_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
       console.log(`Stripe: ${stripe ? '✅ Configured' : '❌ Not configured'}`);
       console.log(`${'='.repeat(60)}\n`);

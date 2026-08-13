@@ -851,7 +851,8 @@
                     document.getElementById('registerMessage').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
                 }
             } catch (error) {
-                document.getElementById('registerMessage').innerHTML = '<div class="alert alert-error">エラーが発生しました</div>';
+                console.error('Register fetch error:', error);
+                document.getElementById('registerMessage').innerHTML = `<div class="alert alert-error">通信エラー: ${error.message}</div>`;
             }
         }
 
@@ -883,7 +884,8 @@
                     document.getElementById('loginMessage').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
                 }
             } catch (error) {
-                document.getElementById('loginMessage').innerHTML = '<div class="alert alert-error">エラーが発生しました</div>';
+                console.error('Login fetch error:', error);
+                document.getElementById('loginMessage').innerHTML = `<div class="alert alert-error">通信エラー: ${error.message}</div>`;
             }
         }
 
