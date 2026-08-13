@@ -142,13 +142,7 @@ function authMiddleware(req, res, next) {
 }
 
 function trackConversion(event, userId = null, data = {}) {
-  memoryDB.events.push({
-    id: uuidv4(),
-    event,
-    userId,
-    timestamp: new Date(),
-    data
-  });
+  recordAnalyticsEvent(event, userId, data).catch(err => console.error('Analytics tracking error:', err));
 }
 
 // ============================================================
@@ -421,13 +415,12 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
     }
 
     const { plan } = req.body;
-    const user = memoryDB.users.find(u => u.id === req.userId);
+    const user = await getUserById(req.userId);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Price IDs must be set in environment variables
     const priceIds = {
       starter: process.env.STRIPE_PRICE_ID_STARTER || 'price_1Pz5ZaKxxxxxxxxxxx',
       pro: process.env.STRIPE_PRICE_ID_PRO || 'price_1Pz5ZbKxxxxxxxxxxx'
@@ -443,15 +436,15 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
         }
       ],
       mode: 'subscription',
-      success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/pricing`,
+      success_url: `${process.env.FRONTEND_URL || 'https://lift-start.onrender.com'}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL || 'https://lift-start.onrender.com'}/pricing`,
       metadata: {
         userId: user.id,
         plan: plan
       }
     });
 
-    trackConversion('checkout_start', user.id, { plan });
+    recordAnalyticsEvent('checkout_start', user.id, { plan });
 
     res.json({ sessionId: session.id, url: session.url });
   } catch (error) {
@@ -479,40 +472,11 @@ app.post('/api/webhooks/stripe', async (req, res) => {
       const userId = session.metadata.userId;
       const plan = session.metadata.plan;
 
-      const user = memoryDB.users.find(u => u.id === userId);
+      const user = await getUserById(userId);
       if (user) {
-        user.plan = plan;
-        
-        if (plan === 'starter') {
-          user.diagnosisLimit = 10;
-        } else if (plan === 'pro') {
-          user.diagnosisLimit = 999;
-        }
-
-        memoryDB.subscriptions.push({
-          id: uuidv4(),
-          userId,
-          plan,
-          stripeSessionId: session.id,
-          status: 'active',
-          createdAt: new Date()
-        });
-
-        trackConversion('payment_success', userId, { plan });
-      }
-    }
-
-    if (event.type === 'customer.subscription.deleted') {
-      const subscription = event.data.object;
-      const sub = memoryDB.subscriptions.find(s => s.stripeSessionId === subscription.id);
-      if (sub) {
-        sub.status = 'cancelled';
-        const user = memoryDB.users.find(u => u.id === sub.userId);
-        if (user) {
-          user.plan = 'free';
-          user.diagnosisLimit = 1;
-          trackConversion('cancellation', user.id);
-        }
+        await updateUserPlan(userId, plan);
+        await createSubscription(userId, plan, session.id, session.subscription);
+        recordAnalyticsEvent('payment_success', userId, { plan });
       }
     }
 
@@ -524,25 +488,14 @@ app.post('/api/webhooks/stripe', async (req, res) => {
 });
 
 // 8. Admin Stats
-app.get('/api/admin/stats', (req, res) => {
+app.get('/api/admin/stats', async (req, res) => {
   try {
     const adminKey = req.headers['x-admin-key'];
     if (adminKey !== ADMIN_KEY) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const stats = {
-      totalUsers: memoryDB.users.length,
-      freeUsers: memoryDB.users.filter(u => u.plan === 'free').length,
-      starterUsers: memoryDB.users.filter(u => u.plan === 'starter').length,
-      proUsers: memoryDB.users.filter(u => u.plan === 'pro').length,
-      totalDiagnoses: memoryDB.diagnoses.length,
-      monthlyRecurringRevenue: (
-        memoryDB.users.filter(u => u.plan === 'starter').length * 4980 +
-        memoryDB.users.filter(u => u.plan === 'pro').length * 9800
-      ) / 100
-    };
-
+    const stats = await getStatistics();
     res.json(stats);
   } catch (error) {
     console.error('Admin stats error:', error);
