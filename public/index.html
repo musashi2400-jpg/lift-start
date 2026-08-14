@@ -1039,7 +1039,7 @@
             }
 
             try {
-                const response = await fetch(`${API_URL}/upgrade`, {
+                const response = await fetch(`${API_URL}/checkout`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1050,16 +1050,14 @@
 
                 const data = await response.json();
 
-                if (response.ok) {
-                    currentUser.plan = plan;
-                    document.getElementById('planUpgradeMessage').innerHTML = `<div class="alert alert-success">プランがアップグレードされました！</div>`;
-                    document.getElementById('currentPlan').textContent = plan.toUpperCase();
-                    setTimeout(() => loadDashboard(), 1000);
+                if (response.ok && data.url) {
+                    window.location.href = data.url;
                 } else {
-                    alert('アップグレードに失敗しました');
+                    alert(data.error || '決済セッションの作成に失敗しました');
                 }
             } catch (error) {
-                alert('エラーが発生しました');
+                console.error('Checkout error:', error);
+                alert('決済処理中にエラーが発生しました');
             }
         }
 
@@ -1128,7 +1126,21 @@
         // Initialization
         // ============================================
         window.addEventListener('load', () => {
-            if (token) {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('session_id')) {
+                // Payment success redirect
+                switchTab('dashboard');
+                if (token) {
+                    loadDashboard();
+                    document.getElementById('navTabs').style.display = 'flex';
+                }
+                // Show success banner
+                const banner = document.createElement('div');
+                banner.className = 'alert alert-success';
+                banner.style.margin = '20px';
+                banner.textContent = '🎉 決済が完了しました！プランがまもなく反映されます。';
+                document.body.prepend(banner);
+            } else if (token) {
                 switchTab('dashboard');
                 loadDashboard();
                 document.getElementById('navTabs').style.display = 'flex';

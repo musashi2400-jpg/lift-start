@@ -101,7 +101,6 @@ if (!stripe) {
 
 app.use(cors());
 app.use(express.json());
-app.use(express.raw({ type: 'application/json' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
@@ -461,7 +460,7 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
 });
 
 // 7. Stripe Webhook
-app.post('/api/webhooks/stripe', async (req, res) => {
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     if (!stripe || !STRIPE_WEBHOOK_SECRET) {
       return res.status(500).json({ error: 'Stripe webhook not configured' });
