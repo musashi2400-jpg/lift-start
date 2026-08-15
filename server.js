@@ -146,9 +146,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // In production, these would be stored in a 'google_integrations' table.
 const googleConnections = new Map(); // userId -> { connected, shopName, locationId, accessToken, lastPostedContentId }
 
-app.get('/api/google/status', authenticateToken, (req, res) => {
+app.get('/api/google/status', authMiddleware, (req, res) => {
   try {
-    const conn = googleConnections.get(req.user.userId);
+    const conn = googleConnections.get(req.userId);
     if (!conn || !conn.connected) {
       return res.json({ connected: false, shopName: null, locationId: null, lastStatus: '未公開' });
     }
@@ -164,11 +164,11 @@ app.get('/api/google/status', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/api/google/connect', authenticateToken, (req, res) => {
+app.post('/api/google/connect', authMiddleware, (req, res) => {
   try {
     const { shopName, locationId, accessToken } = req.body;
     // Store connection state securely in memory (or DB)
-    googleConnections.set(req.user.userId, {
+    googleConnections.set(req.userId, {
       connected: true,
       shopName: shopName || 'Google Business Location',
       locationId: locationId || 'accounts/123/locations/456',
@@ -182,9 +182,9 @@ app.post('/api/google/connect', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/api/google/disconnect', authenticateToken, (req, res) => {
+app.post('/api/google/disconnect', authMiddleware, (req, res) => {
   try {
-    googleConnections.delete(req.user.userId);
+    googleConnections.delete(req.userId);
     res.json({ success: true, message: 'Google Business Profile disconnected' });
   } catch (error) {
     console.error('Google disconnect error:', error);
@@ -192,9 +192,9 @@ app.post('/api/google/disconnect', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/api/google/publish', authenticateToken, async (req, res) => {
+app.post('/api/google/publish', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.userId;
     const conn = googleConnections.get(userId);
     if (!conn || !conn.connected) {
       return res.status(400).json({ error: 'Google Business Profile is not connected' });
