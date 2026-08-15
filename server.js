@@ -100,6 +100,41 @@ if (!stripe) {
 // ============================================================
 
 app.use(cors());
+
+// Stripe Webhook must be registered before express.json() to preserve raw Buffer body
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+      return res.status(500).json({ error: 'Stripe webhook not configured' });
+    }
+
+    const sig = req.headers['stripe-signature'];
+    const event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      STRIPE_WEBHOOK_SECRET
+    );
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const userId = session.metadata.userId;
+      const plan = session.metadata.plan;
+
+      const user = await getUserById(userId);
+      if (user) {
+        await updateUserPlan(userId, plan);
+        await createSubscription(userId, plan, session.id, session.subscription);
+        recordAnalyticsEvent('payment_success', userId, { plan });
+      }
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(400).json({ error: 'Webhook error' });
+  }
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -458,39 +493,7 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
   }
 });
 
-// 7. Stripe Webhook
-app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
-  try {
-    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
-      return res.status(500).json({ error: 'Stripe webhook not configured' });
-    }
 
-    const sig = req.headers['stripe-signature'];
-    const event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      STRIPE_WEBHOOK_SECRET
-    );
-
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const userId = session.metadata.userId;
-      const plan = session.metadata.plan;
-
-      const user = await getUserById(userId);
-      if (user) {
-        await updateUserPlan(userId, plan);
-        await createSubscription(userId, plan, session.id, session.subscription);
-        recordAnalyticsEvent('payment_success', userId, { plan });
-      }
-    }
-
-    res.json({ received: true });
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(400).json({ error: 'Webhook error' });
-  }
-});
 
 // 8. Admin Stats
 app.get('/api/admin/stats', async (req, res) => {
