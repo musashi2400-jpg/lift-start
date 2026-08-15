@@ -1017,22 +1017,17 @@
 
         async function connectGoogleProfile() {
             if (!token) return;
-            const shopName = currentUser ? currentUser.shopName : 'マイ店舗';
             try {
-                const res = await fetch(`${API_URL}/google/connect`, {
-                    method: 'POST',
+                const res = await fetch(`${API_URL}/google/auth-url`, {
                     headers: {
-                        'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ shopName, locationId: 'accounts/123/locations/999', accessToken: 'mock_oauth_token_val' })
+                    }
                 });
                 const data = await res.json();
-                if (data.success) {
-                    alert('✅ Google Business ProfileとのOAuth接続が完了しました！');
-                    checkGoogleStatus();
+                if (res.ok && data.authUrl) {
+                    window.location.href = data.authUrl;
                 } else {
-                    alert('接続に失敗しました: ' + (data.error || '不明なエラー'));
+                    alert(data.error || 'Google OAuth認証URLの取得に失敗しました。GOOGLE_CLIENT_IDが未設定の可能性があります。');
                 }
             } catch (err) {
                 alert('通信エラーが発生しました');

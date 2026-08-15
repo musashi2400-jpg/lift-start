@@ -254,6 +254,55 @@ export async function getAllUsers() {
   return await query(text);
 }
 
+// ============================================================
+// Google Business Profile Integration Helpers
+// ============================================================
+
+export async function saveGoogleIntegration(userId, accessToken, refreshToken, expiresAt, accountId, locationId, shopName) {
+  const text = `
+    INSERT INTO google_integrations (user_id, access_token, refresh_token, expires_at, account_id, location_id, shop_name, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+    ON CONFLICT (user_id) DO UPDATE
+    SET access_token = $2, refresh_token = $3, expires_at = $4, account_id = $5, location_id = $6, shop_name = $7, updated_at = CURRENT_TIMESTAMP
+    RETURNING *
+  `;
+  // Note: To make ON CONFLICT(user_id) work properly, ensure unique constraint or handle upsert.
+  // Since user_id unique constraint might need to be added, let's do delete + insert transaction or upsert by user_id.
+  await query('DELETE FROM google_integrations WHERE user_id = $1', [userId]);
+  const result = await query(text, [userId, accessToken, refreshToken, expiresAt, accountId, locationId, shopName]);
+  return result[0];
+}
+
+export async function getGoogleIntegration(userId) {
+  const text = 'SELECT * FROM google_integrations WHERE user_id = $1';
+  const res = await query(text, [userId]);
+  return res[0];
+}
+
+export async function deleteGoogleIntegration(userId) {
+  await query('DELETE FROM google_integrations WHERE user_id = $1', [userId]);
+  await query('DELETE FROM google_published_posts WHERE user_id = $1', [userId]);
+  return true;
+}
+
+export async function checkGooglePublishedPost(userId, locationId, contentId) {
+  const text = 'SELECT * FROM google_published_posts WHERE user_id = $1 AND location_id = $2 AND content_id = $3';
+  const res = await query(text, [userId, locationId, contentId]);
+  return res[0];
+}
+
+export async function recordGooglePublishedPost(userId, locationId, contentId, postResourceName) {
+  const text = `
+    INSERT INTO google_published_posts (user_id, location_id, content_id, post_resource_name)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (user_id, location_id, content_id) DO UPDATE
+    SET post_resource_name = $4
+    RETURNING *
+  `;
+  const res = await query(text, [userId, locationId, contentId, postResourceName]);
+  return res[0];
+}
+
 /**
  * データベース接続をクローズ
  */

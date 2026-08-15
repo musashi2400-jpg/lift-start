@@ -120,6 +120,31 @@ CREATE TABLE IF NOT EXISTS leads (
   converted_user_id UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Google integrations table
+CREATE TABLE IF NOT EXISTS google_integrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  account_id VARCHAR(255),
+  location_id VARCHAR(255),
+  shop_name VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Google published posts table for duplicate prevention
+CREATE TABLE IF NOT EXISTS google_published_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  location_id VARCHAR(255) NOT NULL,
+  content_id VARCHAR(255) NOT NULL,
+  post_resource_name VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_user_location_content UNIQUE(user_id, location_id, content_id)
+);
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_plan ON users(plan);
