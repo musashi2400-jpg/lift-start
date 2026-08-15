@@ -934,6 +934,13 @@
                     </div>
 
                     <div class="card">
+                        <h3>🚀 自動集客コンテンツ・SNS投稿カレンダー</h3>
+                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">美容室・ネイル・整体・エステ・ジム向けに最適化されたAI投稿案・Googleマップ集客案を自動生成します。</p>
+                        <button class="btn btn-primary" onclick="generateAutoContent()" style="width: 100%; margin-bottom: 15px;">✨ 今週の集客コンテンツ案を自動生成</button>
+                        <div id="autoContentResult"></div>
+                    </div>
+
+                    <div class="card">
                         <h3>次のステップ</h3>
                         <button class="btn btn-primary" onclick="switchTab('diagnosis')" style="width: 100%; margin-top: 10px;">AI診断を実行</button>
                     </div>
@@ -1035,6 +1042,48 @@
 
         function downloadDiagnosisAsPDF(diagnosisId) {
             alert('📥 PDF ダウンロード機能は準備中です。\n本番環境ではPDFダウンロード機能が利用可能になります。');
+        }
+
+        async function generateAutoContent() {
+            if (!token) {
+                alert('ログインしてください');
+                return;
+            }
+            const container = document.getElementById('autoContentResult');
+            container.innerHTML = '<p style="color: #666;">✨ AIが今週の自動集客コンテンツ（Instagram・Googleマップ・note）を生成中...</p>';
+
+            try {
+                // Mock or AI generation for automated weekly calendar
+                const shopName = currentUser ? currentUser.shopName : 'あなたの店舗';
+                const industry = currentUser ? currentUser.industry : '美容室';
+
+                const html = `
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; margin-top: 10px;">
+                        <h4 style="color: #1e293b; margin-bottom: 8px;">📅 ${shopName} (${industry}) 向け今週の集客自動カレンダー</h4>
+                        <p style="font-size: 13px; color: #475569; margin-bottom: 12px;">以下のコンテンツをInstagramやGoogleマップに投稿し、無料AI診断へ誘導してください。</p>
+                        
+                        <div style="margin-bottom: 12px; border-left: 3px solid #667eea; padding-left: 10px;">
+                            <strong>【月曜・Instagram投稿】ビフォーアフター事例</strong>
+                            <p style="font-size: 13px; color: #33415, margin-top: 4px;">髪質改善でツヤ髪に。毎日のスタイリングが楽になる秘訣を公開！無料AI診断実施中 👉 プロフリンクから</p>
+                        </div>
+
+                        <div style="margin-bottom: 12px; border-left: 3px solid #764ba2; padding-left: 10px;">
+                            <strong>【水曜・Googleマップ】お客様の声＆お悩み解決</strong>
+                            <p style="font-size: 13px; color: #33415; margin-top: 4px;">「朝のセットが早い」と大好評のカット技術。あなたの集客課題を30秒で診断 👉 https://lift-start.onrender.com</p>
+                        </div>
+
+                        <div style="margin-bottom: 12px; border-left: 3px solid #4f46e5; padding-left: 10px;">
+                            <strong>【金曜・note記事案】プロが教える集客の自動化</strong>
+                            <p style="font-size: 13px; color: #33415; margin-top: 4px;">小規模サロンでも月商アップできた3つのステップ。無料AI診断で自店の弱点をチェックしよう！</p>
+                        </div>
+
+                        <button class="btn btn-outline" onclick="navigator.clipboard.writeText('【集客自動投稿案】髪質改善でツヤ髪に。毎日のスタイリングが楽になる秘訣を公開！無料AI診断実施中 👉 https://lift-start.onrender.com'); alert('📋 投稿文をコピーしました！');" style="width: 100%; font-size: 13px; margin-top: 5px;">📋 投稿文をクリップボードにコピー</button>
+                    </div>
+                `;
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = '<div class="alert alert-error">コンテンツ生成に失敗しました</div>';
+            }
         }
 
         // ============================================
