@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LIFT. START - AI集客支援サービス</title>
+    <meta name="description" content="小規模店舗・美容室・サロン向けのAI集客支援サービス。AIによる店舗診断、集客課題分析、自動投稿生成で売上アップをサポート。">
+    <meta property="og:title" content="LIFT. START - AI集客支援サービス">
+    <meta property="og:description" content="小規模店舗向けのAI集客支援サービス。無料AI診断から自動集客まで。">
+    <meta property="og:type" content="website">
     <style>
         * {
             margin: 0;
@@ -1016,8 +1020,13 @@
 
                 <button class="btn btn-primary" onclick="downloadDiagnosisAsPDF('${diagnosis.id}')" style="width: 100%; margin-top: 20px;">📥 診断結果をPDFでダウンロード</button>
 
-                <div class="alert alert-info" style="margin-top: 20px;">
-                    💡 このサービスをもっと活用するには、<a href="#" onclick="switchTab('pricing'); return false;">プランをアップグレード</a>してください。
+                <div style="margin-top: 25px; padding: 20px; background: #eef2ff; border-radius: 8px; border: 1px solid #c7d2fe;">
+                    <h4 style="margin-bottom: 10px; color: #312e81;">🚀 集客を本格的に自動化・改善する</h4>
+                    <p style="font-size: 14px; color: #4b5563; margin-bottom: 15px;">AI診断結果をもとに、毎月の自動投稿生成や月次レポートを利用して集客を最大化します。</p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="handleUpgrade('starter')" style="flex: 1; min-width: 140px;">STARTERで始める (¥4,980/月)</button>
+                        <button class="btn btn-primary" onclick="handleUpgrade('pro')" style="flex: 1; min-width: 140px; background: #4f46e5;">PROで始める (¥9,800/月)</button>
+                    </div>
                 </div>
             `;
 
