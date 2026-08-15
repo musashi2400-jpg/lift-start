@@ -804,6 +804,18 @@
         // ============================================
         // Navigation
         // ============================================
+        function updateAuthUI() {
+            const authButtons = document.getElementById('authButtons');
+            if (token) {
+                authButtons.innerHTML = `<button class="btn btn-secondary" onclick="logout()">ログアウト</button>`;
+            } else {
+                authButtons.innerHTML = `
+                    <button class="btn btn-primary" onclick="switchTab('login')">ログイン</button>
+                    <button class="btn btn-secondary" onclick="switchTab('register')">新規登録</button>
+                `;
+            }
+        }
+
         function switchTab(tabName) {
             const contents = document.querySelectorAll('.content');
             contents.forEach(content => content.classList.remove('active'));
@@ -819,6 +831,7 @@
             if (token && currentUser && currentUser.email === 'admin@lift.local') {
                 document.getElementById('adminTab').style.display = 'block';
             }
+            updateAuthUI();
         }
 
         // ============================================
@@ -897,6 +910,7 @@
             token = null;
             currentUser = null;
             localStorage.removeItem('token');
+            updateAuthUI();
             switchTab('landing');
         }
 
@@ -1300,6 +1314,7 @@
         // Initialization
         // ============================================
         window.addEventListener('load', () => {
+            updateAuthUI();
             const params = new URLSearchParams(window.location.search);
             if (params.has('session_id')) {
                 // Payment success redirect
@@ -1308,17 +1323,31 @@
                     loadDashboard();
                     document.getElementById('navTabs').style.display = 'flex';
                 }
-                // Show success banner
+                // Show success banner temporarily
                 const banner = document.createElement('div');
                 banner.className = 'alert alert-success';
                 banner.style.margin = '20px';
                 banner.textContent = '🎉 決済が完了しました！プランがまもなく反映されます。';
                 document.body.prepend(banner);
+
+                // Remove banner after 4 seconds
+                setTimeout(() => {
+                    if (banner && banner.parentNode) {
+                        banner.parentNode.removeChild(banner);
+                    }
+                }, 4000);
+
+                // Remove session_id from URL without reloading
+                if (window.history && window.history.replaceState) {
+                    const cleanUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+                    window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+                }
             } else if (token) {
                 switchTab('dashboard');
                 loadDashboard();
                 document.getElementById('navTabs').style.display = 'flex';
             }
+            updateAuthUI();
         });
     </script>
 </body>
