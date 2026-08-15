@@ -574,15 +574,22 @@ app.get('/api/google/status', authMiddleware, async (req, res) => {
   }
 });
 
-// 2. Initiate Google OAuth redirect URL
+// Temporary store for state -> userId mapping during OAuth flow
+const oauthStateMap = new Map();
+
+// 2. Initiate Google OAuth redirect URL with secure state containing userId
 app.get('/api/google/auth-url', authMiddleware, (req, res) => {
   try {
     if (!GOOGLE_CLIENT_ID) {
-      // If client ID is not set, return setup guide error
       return res.status(400).json({ error: 'GOOGLE_CLIENT_ID is not configured in Render environment variables.' });
     }
+    const state = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    oauthStateMap.set(state, req.userId);
+    // Cleanup state after 10 mins
+    setTimeout(() => oauthStateMap.delete(state), 10 * 60 * 1000);
+
     const scope = encodeURIComponent('https://www.googleapis.com/auth/business.manage');
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent&state=${state}`;
     res.json({ authUrl });
   } catch (error) {
     console.error('Auth URL error:', error);
@@ -590,15 +597,18 @@ app.get('/api/google/auth-url', authMiddleware, (req, res) => {
   }
 });
 
-// 3. Google OAuth Callback (Exchange code for tokens & fetch accounts/locations)
+// 3. Google OAuth Callback (Exchange code for tokens, fetch real accounts/locations via official endpoints, save to Neon DB)
 app.get('/api/google/callback', async (req, res) => {
   try {
-    const { code, error: oauthError } = req.query;
-    if (oauthError || !code) {
-      return res.redirect('/?google_error=' + encodeURIComponent(oauthError || 'No authorization code'));
+    const { code, state, error: oauthError } = req.query;
+    if (oauthError || !code || !state || !oauthStateMap.has(state)) {
+      return res.redirect('/?google_error=' + encodeURIComponent(oauthError || 'Invalid authorization code or state'));
     }
 
-    // Exchange code for tokens
+    const userId = oauthStateMap.get(state);
+    oauthStateMap.delete(state);
+
+    // Exchange code for tokens (Never expose refresh token to browser)
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -617,37 +627,56 @@ app.get('/api/google/callback', async (req, res) => {
     }
 
     const accessToken = tokenData.access_token;
-    const refreshToken = tokenData.refresh_token; // Only returned on first prompt or offline access
+    const refreshToken = tokenData.refresh_token; 
     const expiresIn = tokenData.expires_in || 3600;
     const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
-    // Fetch Business Profile accounts & locations from official Google API
-    const accountsRes = await fetch('https://mybusinessaccountmanagement.googleapis.v1/accounts', {
+    // Official Google Business Profile Account Management API
+    const accountsRes = await fetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
     const accountsData = await accountsRes.json();
     const account = accountsData.accounts && accountsData.accounts[0];
-    const accountId = account ? account.name : 'accounts/dummy';
-    const accountName = account ? account.accountName : 'Google Business Account';
+    const accountId = account ? account.name : null; // e.g., accounts/12345
 
-    // Fetch locations for this account
-    let locationId = 'accounts/dummy/locations/dummy';
-    let shopName = accountName;
-    if (account && account.name) {
-      const locRes = await fetch(`https://mybusinessbusinessinformation.googleapis.v1/${account.name}/locations`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      const locData = await locRes.json();
-      const location = locData.locations && locData.locations[0];
-      if (location) {
-        locationId = location.name; // e.g., accounts/123/locations/456
-        shopName = location.title || accountName;
-      }
+    if (!accountId) {
+      return res.redirect('/?google_error=' + encodeURIComponent('No Google Business Profile account found for this user'));
     }
 
-    // Since callback doesn't have session JWT directly in header, we can temporarily store in a secure cookie or associate with a session.
-    // For simplicity in single-page redirect return, we redirect to dashboard with success query.
-    // (In production, state parameter holds JWT or user ID).
+    // Official Business Information API for locations
+    let locationId = null;
+    let shopName = 'Google Business Location';
+    const locRes = await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    const locData = await locRes.json();
+    const location = locData.locations && locData.locations[0];
+    if (location) {
+      locationId = location.name; // e.g., accounts/123/locations/456
+      shopName = location.title || 'Google Business Location';
+    } else {
+      return res.redirect('/?google_error=' + encodeURIComponent('No locations found under this Google account'));
+    }
+
+    // Fetch existing integration to retain refresh_token if Google did not re-issue one
+    const existingIntegration = await getGoogleIntegration(userId);
+    const finalRefreshToken = refreshToken || (existingIntegration ? existingIntegration.refresh_token : null);
+
+    if (!finalRefreshToken) {
+      return res.redirect('/?google_error=' + encodeURIComponent('Missing refresh token. Please re-authenticate with prompt=consent'));
+    }
+
+    // Save securely in Neon PostgreSQL
+    await saveGoogleIntegration(
+      userId,
+      accessToken,
+      finalRefreshToken,
+      expiresAt,
+      accountId,
+      locationId,
+      shopName
+    );
+
     res.redirect('/?google_connected=success');
   } catch (error) {
     console.error('Google callback error:', error);
@@ -713,7 +742,7 @@ app.post('/api/google/publish', authMiddleware, async (req, res) => {
     const accessToken = await ensureValidGoogleToken(integration);
 
     // Official Google Business Profile Local Posts API
-    // POST https://mybusiness.googleapis.com/v4/{locationName}/localPosts (or v1 depending on API family)
+    // POST https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/localPosts
     const postEndpoint = `https://mybusiness.googleapis.com/v4/${integration.location_id}/localPosts`;
     const payload = {
       languageCode: 'ja',
@@ -737,7 +766,6 @@ app.post('/api/google/publish', authMiddleware, async (req, res) => {
     const gbpData = await gbpRes.json();
 
     if (!gbpRes.ok) {
-      // Handle official error codes (401, 403, 404, rate limit, etc.)
       const errMessage = gbpData.error?.message || JSON.stringify(gbpData);
       console.error('Google API Error:', gbpRes.status, errMessage);
       return res.status(gbpRes.status).json({
@@ -746,7 +774,21 @@ app.post('/api/google/publish', authMiddleware, async (req, res) => {
       });
     }
 
-    const postResourceName = gbpData.name || `localPosts/${Date.now()}`;
+    const postResourceName = gbpData.name;
+    if (!postResourceName) {
+      return res.status(502).json({ error: 'Google API did not return a valid post resource name' });
+    }
+
+    // Post-creation verification using official GET endpoint: GET https://mybusiness.googleapis.com/v4/{postResourceName}
+    const verifyEndpoint = `https://mybusiness.googleapis.com/v4/${postResourceName}`;
+    const verifyRes = await fetch(verifyEndpoint, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    if (!verifyRes.ok) {
+      const verifyData = await verifyRes.json().catch(() => ({}));
+      console.error('Google post verification failed:', verifyRes.status, verifyData);
+      return res.status(502).json({ error: 'Google post verification failed via GET API: ' + (verifyData.error?.message || verifyRes.status) });
+    }
 
     // Record in Neon PostgreSQL for persistent duplicate prevention
     await recordGooglePublishedPost(userId, integration.location_id, contentId, postResourceName);
