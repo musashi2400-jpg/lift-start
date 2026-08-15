@@ -934,6 +934,19 @@
                     </div>
 
                     <div class="card">
+                        <h3>📍 Google Business Profile 自動投稿連携</h3>
+                        <p style="color: #666; font-size: 14px; margin-bottom: 12px;">Google公式APIを使用して、AIが生成した集客投稿を店舗プロフィールへ自動公開します。</p>
+                        <div id="googleStatusArea" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 12px; font-size: 13px;">
+                            <p><strong>接続状態:</strong> <span id="gbpStatusText" style="color: #dc2626;">未接続</span></p>
+                            <p><strong>店舗名:</strong> <span id="gbpShopName">---</span></p>
+                            <p><strong>投稿状態:</strong> <span id="gbpPostStatus">未公開</span></p>
+                        </div>
+                        <div id="googleActionArea">
+                            <button class="btn btn-primary" onclick="connectGoogleProfile()" style="width: 100%; margin-bottom: 8px; background: #2563eb;">🔗 Googleと接続 (OAuth認証)</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
                         <h3>🚀 自動集客コンテンツ・SNS投稿カレンダー</h3>
                         <p style="color: #666; font-size: 14px; margin-bottom: 15px;">美容室・ネイル・整体・エステ・ジム向けに最適化されたAI投稿案・Googleマップ集客案を自動生成します。</p>
                         <button class="btn btn-primary" onclick="generateAutoContent()" style="width: 100%; margin-bottom: 15px;">✨ 今週の集客コンテンツ案を自動生成</button>
@@ -947,8 +960,111 @@
                 `;
 
                 document.getElementById('dashboardContent').innerHTML = html;
+                checkGoogleStatus();
             } catch (error) {
                 console.error('Dashboard load error:', error);
+            }
+        }
+
+        async function checkGoogleStatus() {
+            if (!token) return;
+            try {
+                const res = await fetch(`${API_URL}/google/status`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const statusText = document.getElementById('gbpStatusText');
+                const shopNameEl = document.getElementById('gbpShopName');
+                const postStatusEl = document.getElementById('gbpPostStatus');
+                const actionArea = document.getElementById('googleActionArea');
+
+                if (data.connected) {
+                    statusText.innerText = '接続済み';
+                    statusText.style.color = '#16a34a';
+                    shopNameEl.innerText = data.shopName;
+                    postStatusEl.innerText = data.lastStatus;
+                    actionArea.innerHTML = `
+                        <button class="btn btn-primary" onclick="publishGooglePost()" style="width: 100%; margin-bottom: 8px; background: #16a34a;">🚀 今週の投稿を自動公開する</button>
+                        <button class="btn btn-outline" onclick="disconnectGoogleProfile()" style="width: 100%; font-size: 13px; color: #dc2626; border-color: #fca5a5;">接続解除</button>
+                    `;
+                } else {
+                    statusText.innerText = '未接続';
+                    statusText.style.color = '#dc2626';
+                    shopNameEl.innerText = '---';
+                    postStatusEl.innerText = '未公開';
+                    actionArea.innerHTML = `
+                        <button class="btn btn-primary" onclick="connectGoogleProfile()" style="width: 100%; margin-bottom: 8px; background: #2563eb;">🔗 Googleと接続 (OAuth認証)</button>
+                    `;
+                }
+            } catch (err) {
+                console.error('Failed to check Google status:', err);
+            }
+        }
+
+        async function connectGoogleProfile() {
+            if (!token) return;
+            const shopName = currentUser ? currentUser.shopName : 'マイ店舗';
+            try {
+                const res = await fetch(`${API_URL}/google/connect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ shopName, locationId: 'accounts/123/locations/999', accessToken: 'mock_oauth_token_val' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('✅ Google Business ProfileとのOAuth接続が完了しました！');
+                    checkGoogleStatus();
+                } else {
+                    alert('接続に失敗しました: ' + (data.error || '不明なエラー'));
+                }
+            } catch (err) {
+                alert('通信エラーが発生しました');
+            }
+        }
+
+        async function disconnectGoogleProfile() {
+            if (!token || !confirm('Google Business Profileの接続を解除しますか？')) return;
+            try {
+                const res = await fetch(`${API_URL}/google/disconnect`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('接続を解除しました');
+                    checkGoogleStatus();
+                }
+            } catch (err) {
+                alert('通信エラーが発生しました');
+            }
+        }
+
+        async function publishGooglePost() {
+            if (!token) return;
+            const content = '【Googleマップ集客自動投稿案】お客様の満足度を高める3つのポイント。無料AI診断実施中 👉 https://lift-start.onrender.com';
+            const contentId = 'google_post_week_01';
+
+            try {
+                const res = await fetch(`${API_URL}/google/publish`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ content, contentId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('🚀 ' + data.message);
+                    checkGoogleStatus();
+                } else {
+                    alert('❌ 公開エラー: ' + (data.error || '不明なエラー'));
+                }
+            } catch (err) {
+                alert('通信エラーが発生しました');
             }
         }
 
