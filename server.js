@@ -441,7 +441,7 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
         }
       ],
       mode: 'subscription',
-      success_url: `${process.env.FRONTEND_URL || 'https://lift-start.onrender.com'}/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${process.env.FRONTEND_URL || 'https://lift-start.onrender.com'}/?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL || 'https://lift-start.onrender.com'}/pricing`,
       metadata: {
         userId: user.id,
