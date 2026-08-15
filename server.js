@@ -434,7 +434,6 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
 
     const session = await stripe.checkout.sessions.create({
       customer_email: user.email,
-      payment_method_types: ['card'],
       line_items: [
         {
           price: priceIds[plan],
