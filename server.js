@@ -488,8 +488,8 @@ app.post('/api/checkout', authMiddleware, async (req, res) => {
 
     res.json({ sessionId: session.id, url: session.url });
   } catch (error) {
-    console.error('Checkout error:', error);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    console.error('Checkout error:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to create checkout session', details: error.message });
   }
 });
 
