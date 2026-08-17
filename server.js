@@ -858,3 +858,95 @@ process.on('SIGTERM', async () => {
   }
   process.exit(0);
 });
+
+// ============================================================
+// Buffer Social Media Automation (Instagram, X, Threads) & Daily Scheduler
+// ============================================================
+
+const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN;
+
+async function fetchBufferChannels() {
+  if (!BUFFER_ACCESS_TOKEN) return [];
+  try {
+    const res = await fetch('https://api.bufferapp.com/1/profiles.json?access_token=' + BUFFER_ACCESS_TOKEN);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.profiles || []);
+  } catch (err) {
+    console.error('Buffer fetch channels error:', err);
+    return [];
+  }
+}
+
+async function publishToBuffer(text, profileIds = []) {
+  if (!BUFFER_ACCESS_TOKEN || profileIds.length === 0) return { success: false, error: 'Token or profiles missing' };
+  try {
+    const res = await fetch('https://api.bufferapp.com/1/updates/create.json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        access_token: BUFFER_ACCESS_TOKEN,
+        text: text,
+        'profile_ids[]': profileIds
+      })
+    });
+    const data = await res.json();
+    return { success: res.ok, data };
+  } catch (err) {
+    console.error('Buffer publish error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function runDailySocialAutomation() {
+  console.log('🤖 Running daily social automation for LIFT. START...');
+  if (!BUFFER_ACCESS_TOKEN || !OPENAI_API_KEY) {
+    console.warn('⚠️ Buffer or OpenAI not fully configured for daily automation.');
+    return;
+  }
+
+  try {
+    const channels = await fetchBufferChannels();
+    if (channels.length === 0) {
+      console.warn('⚠️ No Buffer channels found.');
+      return;
+    }
+    const profileIds = channels.map(c => c.id);
+
+    // Generate post via OpenAI
+    const prompt = '美容サロン・エステ・整体のオーナー向けに、LIFT. START（月額4,980円からのAI集客・自動化ツール、無料AI診断 https://lift-start.onrender.com ）を紹介する集客投稿文を1つ作成してください。CTAのURLを必ず含めてください。';
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 300
+      })
+    });
+
+    if (!res.ok) {
+      console.error('OpenAI generation failed in scheduler');
+      return;
+    }
+
+    const aiData = await res.json();
+    const postText = aiData.choices[0].message.content;
+
+    const pubResult = await publishToBuffer(postText, profileIds);
+    console.log('📊 Daily social automation result:', pubResult);
+  } catch (err) {
+    console.error('Daily social automation error:', err);
+  }
+}
+
+// Schedule daily execution (every 24 hours, and run once after startup for verification)
+setInterval(runDailySocialAutomation, 24 * 60 * 60 * 1000);
+// Initial run 10 seconds after boot
+setTimeout(runDailySocialAutomation, 10 * 1000);
