@@ -889,7 +889,8 @@ async function publishToBuffer(text, profileIds = []) {
       body: new URLSearchParams({
         access_token: BUFFER_ACCESS_TOKEN,
         text: text,
-        'profile_ids[]': profileIds
+        'profile_ids[]': profileIds,
+        now: 'true'
       })
     });
     const data = await res.json();
