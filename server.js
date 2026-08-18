@@ -950,3 +950,15 @@ async function runDailySocialAutomation() {
 setInterval(runDailySocialAutomation, 24 * 60 * 60 * 1000);
 // Initial run 10 seconds after boot
 setTimeout(runDailySocialAutomation, 10 * 1000);
+
+// External Cron Webhook Endpoint
+app.all('/api/automation/daily-post', async (req, res) => {
+  try {
+    console.log('🔔 /api/automation/daily-post triggered by external cron');
+    await runDailySocialAutomation();
+    res.json({ success: true, message: 'Daily social automation triggered successfully' });
+  } catch (err) {
+    console.error('Daily automation endpoint error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
