@@ -868,35 +868,119 @@ const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN;
 async function fetchBufferChannels() {
   if (!BUFFER_ACCESS_TOKEN) return [];
   try {
-    const res = await fetch('https://api.bufferapp.com/1/profiles.json?access_token=' + BUFFER_ACCESS_TOKEN);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : (data.profiles || []);
+    // 1. Get account and organizationId
+    const accountQuery = {
+      query: `query { account { id email name organizations { id name } } }`
+    };
+    const accRes = await fetch('https://api.buffer.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(accountQuery)
+    });
+    const accData = await accRes.json();
+    if (accData.errors) {
+      console.error('Buffer GraphQL account errors:', accData.errors);
+      return [];
+    }
+    const orgs = accData?.data?.account?.organizations;
+    if (!orgs || orgs.length === 0) {
+      console.warn('⚠️ No Buffer organizations found for this account.');
+      return [];
+    }
+    const orgId = orgs[0].id;
+
+    // 2. Get channels for this organization
+    const channelsQuery = {
+      query: `query { channels(input: { organizationId: "${orgId}" }) { id name service displayName } }`
+    };
+    const chanRes = await fetch('https://api.buffer.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(channelsQuery)
+    });
+    const chanData = await chanRes.json();
+    if (chanData.errors) {
+      console.error('Buffer GraphQL channels errors:', chanData.errors);
+      return [];
+    }
+    const channels = chanData?.data?.channels;
+    return Array.isArray(channels) ? channels : [];
   } catch (err) {
-    console.error('Buffer fetch channels error:', err);
+    console.error('Buffer GraphQL fetch error:', err);
     return [];
   }
 }
 
-async function publishToBuffer(text, profileIds = []) {
-  if (!BUFFER_ACCESS_TOKEN || profileIds.length === 0) return { success: false, error: 'Token or profiles missing' };
+async function publishToBuffer(text, channelIds = []) {
+  if (!BUFFER_ACCESS_TOKEN || channelIds.length === 0) return { success: false, error: 'Token or channelIds missing' };
   try {
-    const res = await fetch('https://api.bufferapp.com/1/updates/create.json', {
+    // We need organizationId for createPost mutation as well, or fetch account orgId
+    const accountQuery = {
+      query: `query { account { organizations { id } } }`
+    };
+    const accRes = await fetch('https://api.buffer.com', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
       },
-      body: new URLSearchParams({
-        access_token: BUFFER_ACCESS_TOKEN,
-        text: text,
-        'profile_ids[]': profileIds,
-        now: 'true'
-      })
+      body: JSON.stringify(accountQuery)
     });
-    const data = await res.json();
-    return { success: res.ok, data };
+    const accData = await accRes.json();
+    const orgId = accData?.data?.account?.organizations?.[0]?.id;
+    if (!orgId) {
+      return { success: false, error: 'Organization ID not found for publishing' };
+    }
+
+    // createPost mutation (immediate publishing with dueAt = null or scheduled now)
+    const mutation = {
+      query: `
+        mutation CreatePost($input: CreatePostInput!) {
+          createPost(input: $input) {
+            success
+            post {
+              id
+              text
+              status
+            }
+            userErrors {
+              message
+            }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          organizationId: orgId,
+          channelIds: channelIds,
+          text: text,
+          dueAt: null
+        }
+      }
+    };
+
+    const pubRes = await fetch('https://api.buffer.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(mutation)
+    });
+    const pubData = await pubRes.json();
+    if (pubData.errors || pubData?.data?.createPost?.userErrors?.length > 0) {
+      console.error('Buffer GraphQL publish errors:', pubData.errors || pubData.data.createPost.userErrors);
+      return { success: false, data: pubData };
+    }
+    return { success: true, data: pubData };
   } catch (err) {
-    console.error('Buffer publish error:', err);
+    console.error('Buffer GraphQL publish exception:', err);
     return { success: false, error: err.message };
   }
 }

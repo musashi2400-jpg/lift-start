@@ -1,0 +1,21 @@
+# Todo List
+- [ ] Check cron-job.org execution history and status codes
+- [ ] Verify Render daily-post execution and OpenAI generation logs
+- [ ] Check Buffer API response for Instagram publishing status
+- [ ] Fix any discrepancy between Buffer draft creation and actual publishing
+- [ ] Verify actual post appearance on Instagram account lift_.start
+- [ ] Verify Buffer API immediate posting parameter (now: true)
+- [ ] Update server.js publishToBuffer to include now: true
+- [ ] Push to GitHub and verify Render deployment
+- [ ] Trigger daily-post and verify Instagram post ID/URL
+- [ ] Send manual HTTP POST to https://lift-start.onrender.com/api/automation/daily-post
+- [ ] Capture HTTP response status and body
+- [ ] Check Buffer API response for Instagram publishing
+- [ ] Verify actual Instagram post on lift_.start
+- [ ] Check Render BUFFER_ACCESS_TOKEN presence
+- [ ] Test Buffer profiles API response and status code
+- [ ] Verify channel count and lift_.start connection status
+- [ ] Analyze No Buffer channels found early return condition
+- [ ] Check Buffer Instagram connection status
+- [ ] Verify Buffer Free plan API limitations for Instagram profiles
+- [ ] Test API key profile retrieval locally without modifying code
