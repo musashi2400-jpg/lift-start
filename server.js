@@ -881,6 +881,7 @@ async function fetchBufferChannels() {
       body: JSON.stringify(accountQuery)
     });
     const accData = await accRes.json();
+    console.log('📊 Buffer account status:', accRes.status, JSON.stringify(accData));
     if (accData.errors) {
       console.error('Buffer GraphQL account errors:', accData.errors);
       return [];
@@ -891,6 +892,7 @@ async function fetchBufferChannels() {
       return [];
     }
     const orgId = orgs[0].id;
+    console.log('📊 Found Buffer orgId:', orgId);
 
     // 2. Get channels for this organization
     const channelsQuery = {
@@ -905,11 +907,13 @@ async function fetchBufferChannels() {
       body: JSON.stringify(channelsQuery)
     });
     const chanData = await chanRes.json();
+    console.log('📊 Buffer channels status:', chanRes.status, JSON.stringify(chanData));
     if (chanData.errors) {
       console.error('Buffer GraphQL channels errors:', chanData.errors);
       return [];
     }
     const channels = chanData?.data?.channels;
+    console.log('📊 Found Buffer channels count:', channels ? channels.length : 0);
     return Array.isArray(channels) ? channels : [];
   } catch (err) {
     console.error('Buffer GraphQL fetch error:', err);
@@ -974,8 +978,9 @@ async function publishToBuffer(text, channelIds = []) {
       body: JSON.stringify(mutation)
     });
     const pubData = await pubRes.json();
+    console.log('📊 Buffer createPost status:', pubRes.status, JSON.stringify(pubData));
     if (pubData.errors || pubData?.data?.createPost?.userErrors?.length > 0) {
-      console.error('Buffer GraphQL publish errors:', pubData.errors || pubData.data.createPost.userErrors);
+      console.error('Buffer GraphQL publish errors:', pubData.errors || pubData?.data?.createPost?.userErrors);
       return { success: false, data: pubData };
     }
     return { success: true, data: pubData };
