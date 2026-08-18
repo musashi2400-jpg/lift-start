@@ -865,10 +865,10 @@ process.on('SIGTERM', async () => {
 
 const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN;
 
-async function fetchBufferChannels() {
-  if (!BUFFER_ACCESS_TOKEN) return [];
+async function resolveBufferTarget() {
+  if (!BUFFER_ACCESS_TOKEN) return { orgId: null, channel: null };
   try {
-    // 1. Get account and organizationId
+    // 1. Get account and all organizations
     const accountQuery = {
       query: `query { account { id email name organizations { id name } } }`
     };
@@ -881,69 +881,52 @@ async function fetchBufferChannels() {
       body: JSON.stringify(accountQuery)
     });
     const accData = await accRes.json();
-    console.log('📊 Buffer account status:', accRes.status, JSON.stringify(accData));
-    if (accData.errors) {
+    console.log('📊 Buffer account status:', accRes.status);
+    if (accData.errors || !accData?.data?.account?.organizations) {
       console.error('Buffer GraphQL account errors:', accData.errors);
-      return [];
+      return { orgId: null, channel: null };
     }
-    const orgs = accData?.data?.account?.organizations;
-    if (!orgs || orgs.length === 0) {
-      console.warn('⚠️ No Buffer organizations found for this account.');
-      return [];
-    }
-    const orgId = orgs[0].id;
-    console.log('📊 Found Buffer orgId:', orgId);
 
-    // 2. Get channels for this organization
-    const channelsQuery = {
-      query: `query { channels(input: { organizationId: "${orgId}" }) { id name service displayName } }`
-    };
-    console.log('📊 Buffer channels query payload for org:', orgId);
-    const chanRes = await fetch('https://api.buffer.com', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
-      },
-      body: JSON.stringify(channelsQuery)
-    });
-    const chanData = await chanRes.json();
-    console.log('📊 Buffer channels status:', chanRes.status, JSON.stringify(chanData));
-    if (chanData.errors) {
-      console.error('Buffer GraphQL channels errors:', chanData.errors);
-      return [];
+    const orgs = accData.data.account.organizations;
+    console.log('📊 Found Buffer organizations count:', orgs.length);
+
+    // 2. Scan all organizations to find the one containing Instagram lift_.start
+    for (const org of orgs) {
+      const channelsQuery = {
+        query: `query { channels(input: { organizationId: "${org.id}" }) { id name service displayName } }`
+      };
+      const chanRes = await fetch('https://api.buffer.com', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
+        },
+        body: JSON.stringify(channelsQuery)
+      });
+      const chanData = await chanRes.json();
+      const channels = chanData?.data?.channels;
+      if (Array.isArray(channels) && channels.length > 0) {
+        console.log(`📊 Org ${org.id} (${org.name}) has ${channels.length} channels.`);
+        // Look for Instagram channel specifically matching lift_.start or service === instagram
+        const igChannel = channels.find(c => c.service === 'instagram' && (c.name?.toLowerCase().includes('lift_.start') || c.displayName?.toLowerCase().includes('lift_.start') || true));
+        if (igChannel) {
+          console.log('🎯 Found target Instagram channel:', igChannel.id, igChannel.name || igChannel.displayName, 'in Org:', org.id);
+          return { orgId: org.id, channel: igChannel };
+        }
+      }
     }
-    const channels = chanData?.data?.channels;
-    console.log('📊 Found Buffer channels count:', channels ? channels.length : 0);
-    return Array.isArray(channels) ? channels : [];
+
+    console.warn('⚠️ No Organization found containing the target Instagram lift_.start channel.');
+    return { orgId: null, channel: null };
   } catch (err) {
-    console.error('Buffer GraphQL fetch error:', err);
-    return [];
+    console.error('Buffer target resolution exception:', err);
+    return { orgId: null, channel: null };
   }
 }
 
-async function publishToBuffer(text, channelIds = []) {
-  if (!BUFFER_ACCESS_TOKEN || channelIds.length === 0) return { success: false, error: 'Token or channelIds missing' };
+async function publishToBuffer(text, channelId, orgId) {
+  if (!BUFFER_ACCESS_TOKEN || !channelId || !orgId) return { success: false, error: 'Token, channelId, or orgId missing' };
   try {
-    // We need organizationId for createPost mutation as well, or fetch account orgId
-    const accountQuery = {
-      query: `query { account { organizations { id } } }`
-    };
-    const accRes = await fetch('https://api.buffer.com', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
-      },
-      body: JSON.stringify(accountQuery)
-    });
-    const accData = await accRes.json();
-    const orgId = accData?.data?.account?.organizations?.[0]?.id;
-    if (!orgId) {
-      return { success: false, error: 'Organization ID not found for publishing' };
-    }
-
-    // createPost mutation (immediate publishing with dueAt = null or scheduled now)
     const mutation = {
       query: `
         mutation CreatePost($input: CreatePostInput!) {
@@ -963,7 +946,7 @@ async function publishToBuffer(text, channelIds = []) {
       variables: {
         input: {
           organizationId: orgId,
-          channelIds: channelIds,
+          channelIds: [channelId],
           text: text,
           dueAt: null
         }
@@ -999,12 +982,11 @@ async function runDailySocialAutomation() {
   }
 
   try {
-    const channels = await fetchBufferChannels();
-    if (channels.length === 0) {
-      console.warn('⚠️ No Buffer channels found.');
+    const { orgId, channel } = await resolveBufferTarget();
+    if (!orgId || !channel) {
+      console.warn('⚠️ Target Instagram lift_.start channel could not be resolved across any Organization.');
       return;
     }
-    const profileIds = channels.map(c => c.id);
 
     // Generate post via OpenAI
     const prompt = '美容サロン・エステ・整体のオーナー向けに、LIFT. START（月額4,980円からのAI集客・自動化ツール、無料AI診断 https://lift-start.onrender.com ）を紹介する集客投稿文を1つ作成してください。CTAのURLを必ず含めてください。';
@@ -1030,7 +1012,7 @@ async function runDailySocialAutomation() {
     const aiData = await res.json();
     const postText = aiData.choices[0].message.content;
 
-    const pubResult = await publishToBuffer(postText, profileIds);
+    const pubResult = await publishToBuffer(postText, channel.id, orgId);
     console.log('📊 Daily social automation result:', pubResult);
   } catch (err) {
     console.error('Daily social automation error:', err);
