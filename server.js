@@ -898,6 +898,7 @@ async function fetchBufferChannels() {
     const channelsQuery = {
       query: `query { channels(input: { organizationId: "${orgId}" }) { id name service displayName } }`
     };
+    console.log('📊 Buffer channels query payload for org:', orgId);
     const chanRes = await fetch('https://api.buffer.com', {
       method: 'POST',
       headers: {
