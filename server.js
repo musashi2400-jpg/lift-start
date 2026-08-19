@@ -1093,8 +1093,8 @@ async function generateSocialPost(platform) {
     },
     x: {
       prompt: '美容サロン・エステ・整体の経営者向けに、X用の集客投稿文を日本語で1つ作成してください。短文で、最初に問題提起を置き、運営改善に使える具体的な数値を1つだけ含め、根拠のない成果保証は書かないでください。無料診断のURL、リンク、ハッシュタグ、絵文字は含めないでください。',
-      maxTokens: 160,
-      maxLength: 240,
+      maxTokens: 80,
+      maxLength: 110,
       appendCta: true
     },
     threads: {
