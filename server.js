@@ -982,6 +982,13 @@ async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
           schedulingType: 'automatic',
           mode,
           text: text,
+          metadata: {
+            instagram: {
+              type: 'post',
+              shouldShareToFeed: true,
+              isAiGenerated: true
+            }
+          },
           assets: [
             {
               image: {
@@ -1086,8 +1093,8 @@ async function generateSocialPost(platform) {
     },
     x: {
       prompt: '美容サロン・エステ・整体の経営者向けに、X用の集客投稿文を日本語で1つ作成してください。短文で、最初に問題提起を置き、運営改善に使える具体的な数値を1つだけ含め、根拠のない成果保証は書かないでください。無料診断のURL、リンク、ハッシュタグ、絵文字は含めないでください。',
-      maxTokens: 180,
-      maxLength: 280,
+      maxTokens: 160,
+      maxLength: 240,
       appendCta: true
     },
     threads: {
