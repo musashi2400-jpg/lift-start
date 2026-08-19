@@ -927,17 +927,26 @@ async function resolveBufferTarget() {
 async function publishToBuffer(text, channelId, orgId) {
   if (!BUFFER_ACCESS_TOKEN || !channelId || !orgId) return { success: false, error: 'Token, channelId, or orgId missing' };
   try {
+    // Note: Instagram requires an image asset for automated publishing. We attach a reliable public test image URL.
+    const sampleImageUrl = 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1000&auto=format&fit=crop';
+
     const mutation = {
       query: `
         mutation CreatePost($input: CreatePostInput!) {
           createPost(input: $input) {
-            success
-            post {
-              id
-              text
-              status
+            __typename
+            ... on PostActionSuccess {
+              post {
+                id
+                text
+                status
+                assets {
+                  id
+                  mimeType
+                }
+              }
             }
-            userErrors {
+            ... on MutationError {
               message
             }
           }
@@ -946,9 +955,17 @@ async function publishToBuffer(text, channelId, orgId) {
       variables: {
         input: {
           organizationId: orgId,
-          channelIds: [channelId],
+          channelId: channelId,
+          schedulingType: 'automatic',
+          mode: 'addToQueue',
           text: text,
-          dueAt: null
+          assets: [
+            {
+              image: {
+                url: sampleImageUrl
+              }
+            }
+          ]
         }
       }
     };
@@ -962,9 +979,9 @@ async function publishToBuffer(text, channelId, orgId) {
       body: JSON.stringify(mutation)
     });
     const pubData = await pubRes.json();
-    console.log('📊 Buffer createPost status:', pubRes.status, JSON.stringify(pubData));
-    if (pubData.errors || pubData?.data?.createPost?.userErrors?.length > 0) {
-      console.error('Buffer GraphQL publish errors:', pubData.errors || pubData?.data?.createPost?.userErrors);
+    console.log('📊 Buffer createPost status (with image asset):', pubRes.status, JSON.stringify(pubData));
+    if (pubData.errors || pubData?.data?.createPost?.message) {
+      console.error('Buffer GraphQL publish errors:', pubData.errors || pubData?.data?.createPost?.message);
       return { success: false, data: pubData };
     }
     return { success: true, data: pubData };
