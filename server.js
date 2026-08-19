@@ -925,7 +925,7 @@ async function resolveBufferTarget() {
 }
 
 async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
-  if (!BUFFER_ACCESS_TOKEN || !channelId || !orgId) return { success: false, error: 'Token, channelId, or orgId missing' };
+  if (!BUFFER_ACCESS_TOKEN || !channelId) return { success: false, error: 'Token or channelId missing' };
   try {
     // Note: Instagram requires an image asset for automated publishing. We attach a reliable public test image URL.
     const sampleImageUrl = 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1000&auto=format&fit=crop';
@@ -954,7 +954,6 @@ async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
       `,
       variables: {
         input: {
-          organizationId: orgId,
           channelId: channelId,
           schedulingType: 'automatic',
           mode,
@@ -1103,8 +1102,8 @@ async function generateSocialPost(platform) {
 }
 
 async function publishTextToBuffer(text, channel, orgId, mode) {
-  if (!BUFFER_ACCESS_TOKEN || !channel?.id || !orgId) {
-    return { success: false, error: 'Token, target channel, or organization ID missing' };
+  if (!BUFFER_ACCESS_TOKEN || !channel?.id) {
+    return { success: false, error: 'Token or target channel missing' };
   }
   try {
     const mutation = {
@@ -1132,7 +1131,6 @@ async function publishTextToBuffer(text, channel, orgId, mode) {
       `,
       variables: {
         input: {
-          organizationId: orgId,
           channelId: channel.id,
           schedulingType: 'automatic',
           mode,
