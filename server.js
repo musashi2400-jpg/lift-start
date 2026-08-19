@@ -893,7 +893,7 @@ async function resolveBufferTarget() {
     // 2. Scan all organizations to find the one containing Instagram lift_.start
     for (const org of orgs) {
       const channelsQuery = {
-        query: `query { channels(input: { organizationId: "${org.id}" }) { id name service displayName } }`
+        query: `query { channels(input: { organizationId: "${org.id}" }) { id name service displayName isDisconnected isLocked isQueuePaused } }`
       };
       const chanRes = await fetch('https://api.buffer.com', {
         method: 'POST',
@@ -908,7 +908,13 @@ async function resolveBufferTarget() {
       if (Array.isArray(channels) && channels.length > 0) {
         console.log(`📊 Org ${org.id} (${org.name}) has ${channels.length} channels.`);
         // Look for Instagram channel specifically matching lift_.start or service === instagram
-        const igChannel = channels.find(c => c.service === 'instagram' && (c.name?.toLowerCase().includes('lift_.start') || c.displayName?.toLowerCase().includes('lift_.start')));
+        const igChannel = channels.find(c =>
+          c.service === 'instagram' &&
+          !c.isDisconnected &&
+          !c.isLocked &&
+          !c.isQueuePaused &&
+          (c.name?.toLowerCase().includes('lift_.start') || c.displayName?.toLowerCase().includes('lift_.start'))
+        );
         if (igChannel) {
           console.log('🎯 Found target Instagram channel:', igChannel.id, igChannel.name || igChannel.displayName, 'in Org:', org.id);
           return { orgId: org.id, channel: igChannel };
@@ -928,7 +934,7 @@ async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
   if (!BUFFER_ACCESS_TOKEN || !channelId) return { success: false, error: 'Token or channelId missing' };
   try {
     // Note: Instagram requires an image asset for automated publishing. We attach a reliable public test image URL.
-    const sampleImageUrl = 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1000&auto=format&fit=crop';
+    const sampleImageUrl = 'https://images.unsplash.com/photo-1742850541164-8eb59ecb3282?q=80&w=3388&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
 
     const mutation = {
       query: `
@@ -947,6 +953,24 @@ async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
               }
             }
             ... on MutationError {
+              message
+            }
+            ... on NotFoundError {
+              message
+            }
+            ... on UnauthorizedError {
+              message
+            }
+            ... on UnexpectedError {
+              message
+            }
+            ... on RestProxyError {
+              message
+            }
+            ... on LimitReachedError {
+              message
+            }
+            ... on InvalidInputError {
               message
             }
           }
@@ -979,9 +1003,10 @@ async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
     });
     const pubData = await pubRes.json();
     console.log('📊 Buffer createPost status (with image asset):', pubRes.status, JSON.stringify(pubData));
-    if (pubData.errors || pubData?.data?.createPost?.message) {
-      console.error('Buffer GraphQL publish errors:', pubData.errors || pubData?.data?.createPost?.message);
-      return { success: false, data: pubData };
+    const publishError = pubData.errors || pubData?.data?.createPost?.message;
+    if (publishError) {
+      console.error('Buffer GraphQL publish errors:', publishError);
+      return { success: false, error: publishError, data: pubData };
     }
     return { success: true, data: pubData };
   } catch (err) {
