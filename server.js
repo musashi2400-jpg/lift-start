@@ -908,7 +908,7 @@ async function resolveBufferTarget() {
       if (Array.isArray(channels) && channels.length > 0) {
         console.log(`📊 Org ${org.id} (${org.name}) has ${channels.length} channels.`);
         // Look for Instagram channel specifically matching lift_.start or service === instagram
-        const igChannel = channels.find(c => c.service === 'instagram' && (c.name?.toLowerCase().includes('lift_.start') || c.displayName?.toLowerCase().includes('lift_.start') || true));
+        const igChannel = channels.find(c => c.service === 'instagram' && (c.name?.toLowerCase().includes('lift_.start') || c.displayName?.toLowerCase().includes('lift_.start')));
         if (igChannel) {
           console.log('🎯 Found target Instagram channel:', igChannel.id, igChannel.name || igChannel.displayName, 'in Org:', org.id);
           return { orgId: org.id, channel: igChannel };
@@ -924,7 +924,7 @@ async function resolveBufferTarget() {
   }
 }
 
-async function publishToBuffer(text, channelId, orgId) {
+async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
   if (!BUFFER_ACCESS_TOKEN || !channelId || !orgId) return { success: false, error: 'Token, channelId, or orgId missing' };
   try {
     // Note: Instagram requires an image asset for automated publishing. We attach a reliable public test image URL.
@@ -957,7 +957,7 @@ async function publishToBuffer(text, channelId, orgId) {
           organizationId: orgId,
           channelId: channelId,
           schedulingType: 'automatic',
-          mode: 'addToQueue',
+          mode,
           text: text,
           assets: [
             {
@@ -991,48 +991,296 @@ async function publishToBuffer(text, channelId, orgId) {
   }
 }
 
-async function runDailySocialAutomation() {
-  console.log('🤖 Running daily social automation for LIFT. START...');
-  if (!BUFFER_ACCESS_TOKEN || !OPENAI_API_KEY) {
-    console.warn('⚠️ Buffer or OpenAI not fully configured for daily automation.');
-    return;
+function channelSummary(channel) {
+  return {
+    id: channel.id,
+    service: channel.service,
+    name: channel.name || channel.displayName || null,
+    displayName: channel.displayName || null,
+    externalLink: channel.externalLink || null
+  };
+}
+
+async function resolveBufferTextTargets(orgId) {
+  if (!BUFFER_ACCESS_TOKEN || !orgId) {
+    return { targets: null, errors: ['Buffer access token or organization ID is missing'] };
   }
 
   try {
-    const { orgId, channel } = await resolveBufferTarget();
-    if (!orgId || !channel) {
-      console.warn('⚠️ Target Instagram lift_.start channel could not be resolved across any Organization.');
-      return;
-    }
-
-    // Generate post via OpenAI
-    const prompt = '美容サロン・エステ・整体のオーナー向けに、LIFT. START（月額4,980円からのAI集客・自動化ツール、無料AI診断 https://lift-start.onrender.com ）を紹介する集客投稿文を1つ作成してください。CTAのURLを必ず含めてください。';
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const query = {
+      query: `query { channels(input: { organizationId: "${orgId}" }) { id name service displayName externalLink isDisconnected isLocked } }`
+    };
+    const response = await fetch('https://api.buffer.com', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
+        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
       },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 300
-      })
+      body: JSON.stringify(query)
     });
-
-    if (!res.ok) {
-      console.error('OpenAI generation failed in scheduler');
-      return;
+    const data = await response.json();
+    const channels = data?.data?.channels;
+    if (data.errors || !Array.isArray(channels)) {
+      return { targets: null, errors: ['Unable to retrieve Buffer channels'] };
     }
 
-    const aiData = await res.json();
-    const postText = aiData.choices[0].message.content;
+    const selectExactlyOne = (service) => {
+      const matches = channels.filter(channel =>
+        channel.service === service && !channel.isDisconnected && !channel.isLocked
+      );
+      if (matches.length !== 1) {
+        return {
+          channel: null,
+          error: `${service} requires exactly one connected and unlocked Buffer channel; found ${matches.length}`
+        };
+      }
+      return { channel: matches[0], error: null };
+    };
 
-    const pubResult = await publishToBuffer(postText, channel.id, orgId);
-    console.log('📊 Daily social automation result:', pubResult);
-  } catch (err) {
-    console.error('Daily social automation error:', err);
+    // Buffer documents X/Twitter channels with the service value "twitter".
+    const x = selectExactlyOne('twitter');
+    const threads = selectExactlyOne('threads');
+    const errors = [x.error, threads.error].filter(Boolean);
+    return {
+      targets: errors.length === 0 ? { x: x.channel, threads: threads.channel } : null,
+      errors
+    };
+  } catch (error) {
+    console.error('Buffer X/Threads target resolution exception:', error);
+    return { targets: null, errors: [error.message] };
+  }
+}
+
+async function generateSocialPost(platform) {
+  const cta = '無料AI診断: https://lift-start.onrender.com';
+  const platformRules = {
+    instagram: {
+      prompt: '美容サロン・エステ・整体のオーナー向けに、LIFT. START（月額4,980円からのAI集客・自動化ツール、無料AI診断 https://lift-start.onrender.com ）を紹介する集客投稿文を1つ作成してください。CTAのURLを必ず含めてください。',
+      maxTokens: 300,
+      maxLength: 1800,
+      appendCta: false
+    },
+    x: {
+      prompt: '美容サロン・エステ・整体の経営者向けに、X用の集客投稿文を日本語で1つ作成してください。短文で、最初に問題提起を置き、運営改善に使える具体的な数値を1つだけ含め、根拠のない成果保証は書かないでください。無料診断のURL、リンク、ハッシュタグ、絵文字は含めないでください。',
+      maxTokens: 180,
+      maxLength: 280,
+      appendCta: true
+    },
+    threads: {
+      prompt: '美容サロン・エステ・整体の経営者向けに、Threads用の集客投稿文を日本語で1つ作成してください。Instagramより少し長めに、忙しさや集客の悩みへの共感、すぐ実践できる運営ノウハウ、穏やかな行動提案を含めてください。根拠のない成果保証、無料診断のURL、リンク、ハッシュタグ、絵文字は含めないでください。',
+      maxTokens: 300,
+      maxLength: 500,
+      appendCta: true
+    }
+  };
+  const rule = platformRules[platform];
+  if (!rule) throw new Error(`Unsupported social platform: ${platform}`);
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: rule.prompt }],
+      temperature: 0.7,
+      max_tokens: rule.maxTokens
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI generation failed for ${platform} (${response.status})`);
+  }
+  const data = await response.json();
+  const generated = data?.choices?.[0]?.message?.content?.trim();
+  if (!generated) throw new Error(`OpenAI returned empty content for ${platform}`);
+
+  if (!rule.appendCta) return generated.slice(0, rule.maxLength);
+  const bodyLimit = rule.maxLength - cta.length - 2;
+  return `${generated.slice(0, bodyLimit).trim()}\n\n${cta}`;
+}
+
+async function publishTextToBuffer(text, channel, orgId, mode) {
+  if (!BUFFER_ACCESS_TOKEN || !channel?.id || !orgId) {
+    return { success: false, error: 'Token, target channel, or organization ID missing' };
+  }
+  try {
+    const mutation = {
+      query: `
+        mutation CreateTextPost($input: CreatePostInput!) {
+          createPost(input: $input) {
+            __typename
+            ... on PostActionSuccess {
+              post {
+                id
+                text
+                status
+                dueAt
+                sentAt
+                externalLink
+                channelId
+                channelService
+              }
+            }
+            ... on MutationError {
+              message
+            }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          organizationId: orgId,
+          channelId: channel.id,
+          schedulingType: 'automatic',
+          mode,
+          text
+        }
+      }
+    };
+    const response = await fetch('https://api.buffer.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(mutation)
+    });
+    const data = await response.json();
+    if (data.errors || data?.data?.createPost?.message) {
+      return { success: false, error: data.errors || data?.data?.createPost?.message, data };
+    }
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function getBufferPost(postId) {
+  if (!BUFFER_ACCESS_TOKEN || !postId) return null;
+  try {
+    const query = {
+      query: `query { post(input: { id: ${JSON.stringify(postId)} }) { id status dueAt sentAt externalLink channelId channelService error { message } } }`
+    };
+    const response = await fetch('https://api.buffer.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BUFFER_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(query)
+    });
+    const data = await response.json();
+    return data?.data?.post || null;
+  } catch (error) {
+    console.error('Buffer post lookup exception:', error);
+    return null;
+  }
+}
+
+async function waitForBufferPublication(postId, attempts = 8, delayMs = 5000) {
+  let post = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    post = await getBufferPost(postId);
+    if (!post || post.status === 'sent' || post.status === 'error' || post.externalLink) {
+      return post;
+    }
+  }
+  return post;
+}
+
+function getCreatedPost(result) {
+  return result?.data?.data?.createPost?.post || null;
+}
+
+async function summarizePublication(result, channel, publishNow) {
+  const created = getCreatedPost(result);
+  if (!result?.success || !created) {
+    return {
+      success: false,
+      channel: channelSummary(channel),
+      error: result?.error || 'Buffer did not create a post'
+    };
+  }
+  const observed = publishNow
+    ? await waitForBufferPublication(created.id)
+    : await getBufferPost(created.id);
+  const post = observed || created;
+  const status = post.status || created.status || 'unknown';
+  return {
+    success: status !== 'error',
+    channel: channelSummary(channel),
+    bufferPostId: post.id || created.id,
+    bufferStatus: status,
+    publication: status === 'sent' ? 'published' : (status === 'error' ? 'failed' : 'scheduled'),
+    dueAt: post.dueAt || created.dueAt || null,
+    sentAt: post.sentAt || created.sentAt || null,
+    externalUrl: post.externalLink || created.externalLink || null,
+    error: post.error?.message || null
+  };
+}
+
+async function runDailySocialAutomation({ publishNow = false } = {}) {
+  console.log('🤖 Running daily social automation for LIFT. START...');
+  if (!BUFFER_ACCESS_TOKEN || !OPENAI_API_KEY) {
+    const error = 'Buffer or OpenAI not fully configured for daily automation';
+    console.warn(`⚠️ ${error}.`);
+    return { success: false, error };
+  }
+
+  try {
+    // Preserve the existing Instagram lookup and image-based publish path.
+    const { orgId, channel: instagramChannel } = await resolveBufferTarget();
+    if (!orgId || !instagramChannel) {
+      const error = 'Target Instagram lift_.start channel could not be resolved across any Organization';
+      console.warn(`⚠️ ${error}.`);
+      return { success: false, error };
+    }
+    const { targets, errors } = await resolveBufferTextTargets(orgId);
+    if (!targets) {
+      console.warn('⚠️ X/Threads Buffer channel validation failed:', errors);
+      return {
+        success: false,
+        error: 'X/Threads Buffer channel validation failed',
+        details: errors,
+        instagram: channelSummary(instagramChannel)
+      };
+    }
+
+    const [instagramText, xText, threadsText] = await Promise.all([
+      generateSocialPost('instagram'),
+      generateSocialPost('x'),
+      generateSocialPost('threads')
+    ]);
+    const mode = publishNow ? 'shareNow' : 'addToQueue';
+
+    // Keep the established Instagram publisher unchanged so its required image asset is retained.
+    const instagramResult = await publishToBuffer(instagramText, instagramChannel.id, orgId, mode);
+    const xResult = await publishTextToBuffer(xText, targets.x, orgId, mode);
+    const threadsResult = await publishTextToBuffer(threadsText, targets.threads, orgId, mode);
+
+    const results = {
+      instagram: await summarizePublication(instagramResult, instagramChannel, publishNow),
+      x: await summarizePublication(xResult, targets.x, publishNow),
+      threads: await summarizePublication(threadsResult, targets.threads, publishNow)
+    };
+    const success = Object.values(results).every(result => result.success);
+    const output = {
+      success,
+      mode,
+      generatedAt: new Date().toISOString(),
+      results
+    };
+    console.log('📊 Daily social automation result:', JSON.stringify(output));
+    return output;
+  } catch (error) {
+    console.error('Daily social automation error:', error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -1041,14 +1289,15 @@ setInterval(runDailySocialAutomation, 24 * 60 * 60 * 1000);
 // Initial run 10 seconds after boot
 setTimeout(runDailySocialAutomation, 10 * 1000);
 
-// External Cron Webhook Endpoint
+// External Cron Webhook Endpoint. Add ?publishNow=true only for an intentional manual live-post check.
 app.all('/api/automation/daily-post', async (req, res) => {
   try {
-    console.log('🔔 /api/automation/daily-post triggered by external cron');
-    await runDailySocialAutomation();
-    res.json({ success: true, message: 'Daily social automation triggered successfully' });
-  } catch (err) {
-    console.error('Daily automation endpoint error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    const publishNow = req.query.publishNow === 'true';
+    console.log(`🔔 /api/automation/daily-post triggered (${publishNow ? 'publish now' : 'queue'})`);
+    const result = await runDailySocialAutomation({ publishNow });
+    res.status(result.success ? 200 : 502).json(result);
+  } catch (error) {
+    console.error('Daily automation endpoint error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
