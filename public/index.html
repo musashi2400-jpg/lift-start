@@ -521,8 +521,8 @@
                 <h2>集客のための投稿作りを、AIに任せる。</h2>
                 <p>美容室・ネイル・整体・エステ・パーソナルジム向けAI集客支援サービス</p>
                 <div class="cta-buttons">
-                    <button class="btn btn-white btn-large" onclick="switchTab('diagnosis')">📊 無料AI診断を試す</button>
-                    <button class="btn btn-outline btn-large" onclick="switchTab('register')">今すぐ始める</button>
+                    <button class="btn btn-white btn-large" onclick="startFreeDiagnosis()">あなたの店がなぜ集客できていないか、無料AIが診断</button>
+                    <button class="btn btn-outline btn-large" onclick="startFreeDiagnosis()">無料で集客課題を確認する</button>
                 </div>
             </div>
 
@@ -559,25 +559,25 @@
                     <h3>STARTER</h3>
                     <div class="price">¥4,980</div>
                     <p style="color: #999; margin-bottom: 20px;">毎月</p>
+                    <p style="color: #4b5563; margin-bottom: 12px;">毎月の発信と改善の優先順位に迷う時間を減らすプラン</p>
                     <ul>
-                        <li>AI診断 無制限</li>
-                        <li>投稿生成（Instagram・Google）</li>
-                        <li>月次レポート</li>
-                        <li>コンテンツカレンダー</li>
+                        <li>何を投稿するかを毎月整理しやすくなる</li>
+                        <li>診断結果から改善の優先順位を決めやすくなる</li>
+                        <li>日々のSNS運用を続けやすくなる</li>
                     </ul>
-                    <button class="btn btn-primary" onclick="switchTab('register')" style="width: 100%; margin-top: 20px;">始める</button>
+                    <button class="btn btn-primary" onclick="startFreeDiagnosis()" style="width: 100%; margin-top: 20px;">無料診断からSTARTERを検討する</button>
                 </div>
                 <div class="pricing-card">
                     <h3>PRO</h3>
                     <div class="price">¥9,800</div>
                     <p style="color: #999; margin-bottom: 20px;">毎月</p>
+                    <p style="color: #4b5563; margin-bottom: 12px;">複数SNSの集客判断をまとめ、運用負担をさらに減らすプラン</p>
                     <ul>
-                        <li>すべての機能</li>
-                        <li>高度なAI分析</li>
-                        <li>複数SNS対応</li>
-                        <li>優先サポート</li>
+                        <li>複数SNSの発信方針をまとめて考えやすくなる</li>
+                        <li>より深い分析から改善判断を早く進めやすくなる</li>
+                        <li>集客運用を継続しやすくなる</li>
                     </ul>
-                    <button class="btn btn-primary" onclick="switchTab('register')" style="width: 100%; margin-top: 20px;">始める</button>
+                    <button class="btn btn-primary" onclick="startFreeDiagnosis()" style="width: 100%; margin-top: 20px; background: #4f46e5;">無料診断からPROを検討する</button>
                 </div>
             </div>
         </div>
@@ -700,25 +700,25 @@
                     <h3>STARTER</h3>
                     <div class="price">¥4,980</div>
                     <p style="color: #999; margin-bottom: 20px;">毎月</p>
+                    <p style="color: #4b5563; margin-bottom: 12px;">発信内容と改善の優先順位に迷う時間を減らしたい店舗向け</p>
                     <ul>
-                        <li>AI診断 無制限</li>
-                        <li>投稿生成（Instagram・Google）</li>
-                        <li>月次レポート</li>
-                        <li>コンテンツカレンダー</li>
+                        <li>投稿案と改善ポイントを毎月整理しやすくなる</li>
+                        <li>何から直すかを決めやすくなる</li>
+                        <li>日々のSNS運用を続けやすくなる</li>
                     </ul>
-                    <button class="btn btn-primary" onclick="handleUpgrade('starter')" style="width: 100%; margin-top: 20px;">アップグレード</button>
+                    <button class="btn btn-primary" onclick="handleUpgrade('starter')" style="width: 100%; margin-top: 20px;">STARTERで改善を始める</button>
                 </div>
                 <div class="pricing-card">
                     <h3>PRO</h3>
                     <div class="price">¥9,800</div>
                     <p style="color: #999; margin-bottom: 20px;">毎月</p>
+                    <p style="color: #4b5563; margin-bottom: 12px;">複数SNSの集客運用をまとめ、判断を早くしたい店舗向け</p>
                     <ul>
-                        <li>すべての機能</li>
-                        <li>高度なAI分析</li>
-                        <li>複数SNS対応</li>
-                        <li>優先サポート</li>
+                        <li>複数媒体の運用方針をまとめて考えやすくなる</li>
+                        <li>より深い分析から次の改善を決めやすくなる</li>
+                        <li>集客運用の負担を減らしやすくなる</li>
                     </ul>
-                    <button class="btn btn-primary" onclick="handleUpgrade('pro')" style="width: 100%; margin-top: 20px;">アップグレード</button>
+                    <button class="btn btn-primary" onclick="handleUpgrade('pro')" style="width: 100%; margin-top: 20px; background: #4f46e5;">PROで集客運用を整える</button>
                 </div>
             </div>
         </div>
@@ -801,6 +801,48 @@
         let token = localStorage.getItem('token');
         let currentUser = null;
 
+        function getAttributionMetadata(extra = {}) {
+            const params = new URLSearchParams(window.location.search);
+            let visitorId = localStorage.getItem('lift_start_visitor_id');
+            if (!visitorId) {
+                visitorId = crypto.randomUUID();
+                localStorage.setItem('lift_start_visitor_id', visitorId);
+            }
+            return {
+                utm_source: params.get('utm_source') || params.get('src') || '',
+                utm_medium: params.get('utm_medium') || (params.get('src') ? 'organic_social' : ''),
+                utm_campaign: params.get('utm_campaign') || '',
+                utm_content: params.get('utm_content') || '',
+                referrer: document.referrer || '',
+                visitor_id: visitorId,
+                entry_path: window.location.pathname,
+                ...extra
+            };
+        }
+
+        function trackFunnelEvent(event, extra = {}) {
+            fetch(`${API_URL}/track`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event, metadata: getAttributionMetadata(extra) })
+            }).catch(() => {});
+        }
+
+        function startFreeDiagnosis() {
+            trackFunnelEvent('diagnosis_cta_click');
+            if (token) {
+                switchTab('diagnosis');
+                return;
+            }
+            sessionStorage.setItem('lift_start_pending_diagnosis', '1');
+            switchTab('register');
+        }
+
+        const socialSource = new URLSearchParams(window.location.search).get('src') || new URLSearchParams(window.location.search).get('utm_source');
+        if (socialSource) {
+            trackFunnelEvent('sns_visit');
+        }
+
         // ============================================
         // Navigation
         // ============================================
@@ -859,11 +901,17 @@
                     token = data.token;
                     currentUser = data.user;
                     localStorage.setItem('token', token);
-                    document.getElementById('registerMessage').innerHTML = '<div class="alert alert-success">登録成功！ダッシュボードへ移動します。</div>';
+                    const continueToDiagnosis = sessionStorage.getItem('lift_start_pending_diagnosis') === '1';
+                    document.getElementById('registerMessage').innerHTML = `<div class="alert alert-success">登録成功！${continueToDiagnosis ? '無料AI診断へ移動します。' : 'ダッシュボードへ移動します。'}</div>`;
                     setTimeout(() => {
-                        switchTab('dashboard');
-                        loadDashboard();
-                    }, 1000);
+                        if (continueToDiagnosis) {
+                            sessionStorage.removeItem('lift_start_pending_diagnosis');
+                            switchTab('diagnosis');
+                        } else {
+                            switchTab('dashboard');
+                            loadDashboard();
+                        }
+                    }, 700);
                 } else {
                     document.getElementById('registerMessage').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
                 }
@@ -892,11 +940,17 @@
                     token = data.token;
                     currentUser = data.user;
                     localStorage.setItem('token', token);
-                    document.getElementById('loginMessage').innerHTML = '<div class="alert alert-success">ログイン成功！</div>';
+                    const continueToDiagnosis = sessionStorage.getItem('lift_start_pending_diagnosis') === '1';
+                    document.getElementById('loginMessage').innerHTML = `<div class="alert alert-success">ログイン成功！${continueToDiagnosis ? '無料AI診断へ移動します。' : ''}</div>`;
                     setTimeout(() => {
-                        switchTab('dashboard');
-                        loadDashboard();
-                    }, 1000);
+                        if (continueToDiagnosis) {
+                            sessionStorage.removeItem('lift_start_pending_diagnosis');
+                            switchTab('diagnosis');
+                        } else {
+                            switchTab('dashboard');
+                            loadDashboard();
+                        }
+                    }, 700);
                 } else {
                     document.getElementById('loginMessage').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
                 }
@@ -1150,19 +1204,30 @@
                     </ul>
                 </div>
 
-                <button class="btn btn-primary" onclick="downloadDiagnosisAsPDF('${diagnosis.id}')" style="width: 100%; margin-top: 20px;">📥 診断結果をPDFでダウンロード</button>
-
-                <div style="margin-top: 25px; padding: 20px; background: #eef2ff; border-radius: 8px; border: 1px solid #c7d2fe;">
-                    <h4 style="margin-bottom: 10px; color: #312e81;">🚀 集客を本格的に自動化・改善する</h4>
-                    <p style="font-size: 14px; color: #4b5563; margin-bottom: 15px;">AI診断結果をもとに、毎月の自動投稿生成や月次レポートを利用して集客を最大化します。</p>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button class="btn btn-primary" onclick="handleUpgrade('starter')" style="flex: 1; min-width: 140px;">STARTERで始める (¥4,980/月)</button>
-                        <button class="btn btn-primary" onclick="handleUpgrade('pro')" style="flex: 1; min-width: 140px; background: #4f46e5;">PROで始める (¥9,800/月)</button>
+                <div style="margin-top: 25px; padding: 22px; background: #111827; border-radius: 10px; color: #ffffff; border: 1px solid #facc15;">
+                    <p style="font-size: 13px; color: #facc15; font-weight: 700; margin-bottom: 8px;">診断結果を見た店舗オーナーへ</p>
+                    <h4 style="font-size: 21px; margin-bottom: 10px;">この問題を放置すると、予約につながる機会を逃し続けます。</h4>
+                    <p style="font-size: 15px; color: #e5e7eb; margin-bottom: 18px;">LIFT. STARTなら、今回の改善ポイントを毎月の投稿・導線・振り返りへつなげ、集客に迷う時間を減らせます。</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                        <div style="padding: 15px; background: #1f2937; border-radius: 8px; border: 1px solid #374151;">
+                            <strong style="color: #facc15;">STARTER ¥4,980/月</strong>
+                            <p style="font-size: 13px; color: #d1d5db; margin: 8px 0 12px;">投稿案と改善の優先順位を毎月整理。何を発信するか迷う時間を減らしたい店舗向け。</p>
+                            <button class="btn btn-primary" onclick="handleUpgrade('starter')" style="width: 100%; background: #facc15; color: #111827;">STARTERで改善を始める</button>
+                        </div>
+                        <div style="padding: 15px; background: #1f2937; border-radius: 8px; border: 1px solid #60a5fa;">
+                            <strong style="color: #93c5fd;">PRO ¥9,800/月</strong>
+                            <p style="font-size: 13px; color: #d1d5db; margin: 8px 0 12px;">複数SNSの運用と深い分析をまとめて支援。集客の判断をより早く整えたい店舗向け。</p>
+                            <button class="btn btn-primary" onclick="handleUpgrade('pro')" style="width: 100%; background: #2563eb;">PROで集客運用を整える</button>
+                        </div>
                     </div>
+                    <p style="font-size: 12px; color: #9ca3af; margin: 0;">プランを選択すると、既存の安全なStripe Checkoutへ移動します。</p>
                 </div>
+
+                <button class="btn btn-outline" onclick="downloadDiagnosisAsPDF('${diagnosis.id}')" style="width: 100%; margin-top: 14px;">診断結果をPDFでダウンロード</button>
             `;
 
             document.getElementById('diagnosisResults').innerHTML = html;
+            trackFunnelEvent('diagnosis_result_view');
         }
 
         function downloadDiagnosisAsPDF(diagnosisId) {
@@ -1215,6 +1280,7 @@
         // Plan Upgrade
         // ============================================
         async function handleUpgrade(plan) {
+            trackFunnelEvent(plan === 'pro' ? 'pro_click' : 'starter_click', { plan });
             if (!token) {
                 alert('ログインしてください');
                 switchTab('login');
@@ -1234,6 +1300,7 @@
                 const data = await response.json();
 
                 if (response.ok && data.url) {
+                    trackFunnelEvent('checkout_redirect', { plan });
                     window.location.href = data.url;
                 } else {
                     alert(data.error || '決済セッションの作成に失敗しました');
