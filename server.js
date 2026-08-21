@@ -1103,7 +1103,7 @@ function getDailySocialTheme(date = new Date()) {
 
 function socialVisualFileName(theme) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return `lift-start-${theme.id}-${timestamp}-${uuidv4().slice(0, 8)}.png`;
+  return `lift-start-${theme.id}-${timestamp}-${uuidv4().slice(0, 8)}.jpg`;
 }
 
 async function generateDailyInstagramVisual(theme, instagramText) {
@@ -1118,7 +1118,9 @@ async function generateDailyInstagramVisual(theme, instagramText) {
     body: JSON.stringify({
       model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
       prompt: imagePrompt,
-      size: '1024x1024'
+      size: '1024x1024',
+      output_format: 'jpeg',
+      quality: 'medium'
     })
   });
 
