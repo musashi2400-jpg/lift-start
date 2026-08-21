@@ -1315,7 +1315,7 @@ async function runDailySocialAutomation({ publishNow = false } = {}) {
 }
 
 // One-off visual test endpoint. It does not modify the existing daily automation or its image asset.
-const INSTAGRAM_VISUAL_TEST_IMAGE_URL = 'https://lift-start.onrender.com/instagram-ai-diagnosis-test.png';
+const INSTAGRAM_VISUAL_TEST_IMAGE_URL = 'https://lift-start.onrender.com/instagram-ai-diagnosis-test.jpg';
 const INSTAGRAM_VISUAL_TEST_CAPTION = `投稿しているのに、新規のお客様につながらない。\n\n原因は「投稿数」ではなく、誰に・何を・どう届けるかの設計かもしれません。\n\nLIFT. STARTの無料AI診断で、あなたの店舗に合う集客の改善ポイントを整理します。\n\n無料AI診断 → https://lift-start.onrender.com`;
 
 app.post('/api/automation/test-instagram-visual', async (req, res) => {
