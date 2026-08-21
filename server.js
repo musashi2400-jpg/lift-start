@@ -302,6 +302,39 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+const FUNNEL_EVENT_NAMES = new Set([
+  'sns_visit',
+  'diagnosis_cta_click',
+  'diagnosis_result_view',
+  'starter_click',
+  'pro_click',
+  'checkout_redirect'
+]);
+
+function sanitizeFunnelMetadata(metadata = {}) {
+  const safeKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'referrer', 'visitor_id', 'entry_path', 'plan'];
+  return Object.fromEntries(
+    safeKeys
+      .filter(key => typeof metadata[key] === 'string' && metadata[key].length <= 180)
+      .map(key => [key, metadata[key]])
+  );
+}
+
+// Lightweight attribution endpoint. It writes only allow-listed funnel events to the existing analytics table.
+app.post('/api/track', async (req, res) => {
+  try {
+    const { event, metadata = {} } = req.body || {};
+    if (!FUNNEL_EVENT_NAMES.has(event)) {
+      return res.status(400).json({ error: 'Unsupported analytics event' });
+    }
+    await recordAnalyticsEvent(event, null, sanitizeFunnelMetadata(metadata));
+    res.status(204).end();
+  } catch (error) {
+    console.error('Public funnel tracking error:', error);
+    res.status(204).end();
+  }
+});
+
 // 2. User Registration
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -1142,23 +1175,32 @@ async function generateDailyInstagramVisual(theme, instagramText) {
   return `${PUBLIC_APP_URL}/social/${fileName}`;
 }
 
+function getSocialDiagnosisCta(platform) {
+  const source = platform === 'instagram' ? 'instagram' : platform;
+  const url = `${PUBLIC_APP_URL}/?src=${encodeURIComponent(source)}`;
+  const copy = platform === 'x'
+    ? 'あなたの店がなぜ集客できないか、無料AIが診断'
+    : 'あなたの店がなぜ集客できていないか、無料AIが診断します';
+  return `${copy}\n${url}`;
+}
+
 async function generateSocialPost(platform, theme = getDailySocialTheme()) {
-  const cta = '無料AI診断: https://lift-start.onrender.com';
+  const cta = getSocialDiagnosisCta(platform);
   const platformRules = {
     instagram: {
-      prompt: `美容サロン・エステ・整体の店舗オーナー向けに、テーマ「${theme.label}」のInstagramキャプションを日本語で1つ作成してください。構成は必ず「問題提起 → 興味喚起 → 無料AI診断CTA」です。最初の1文で悩みを短く言い切り、次にAI診断で見直せる集客設計を具体的に説明し、最後に無料AI診断へ自然に誘導してください。根拠のない成果保証、誇大な数値、ハッシュタグ、絵文字は使わないでください。CTA URLは必ず1回だけ含めてください。昨日と同じ表現・コピーにしないでください。`,
+      prompt: `美容サロン・エステ・整体の店舗オーナー向けに、テーマ「${theme.label}」のInstagramキャプションを日本語で1つ作成してください。構成は必ず「問題提起 → 興味喚起 → 行動提案」です。最初の1文で悩みを短く言い切り、次にAI診断で見直せる集客設計を具体的に説明し、最後に自店の課題を確認したくなる行動提案を入れてください。根拠のない成果保証、誇大な数値、URL、リンク、ハッシュタグ、絵文字は使わないでください。昨日と同じ表現・コピーにしないでください。`,
       maxTokens: 300,
       maxLength: 1800,
-      appendCta: false
+      appendCta: true
     },
     x: {
       prompt: `美容サロン・エステ・整体の経営者向けに、テーマ「${theme.label}」のX投稿を日本語で1つ作成してください。最初の1行を強い問題提起にし、1つの実務的な視点で続きを読みたくなる内容にしてください。根拠のない成果保証、URL、リンク、ハッシュタグ、絵文字は含めないでください。昨日と同じコピーにしないでください。`,
-      maxTokens: 80,
+      maxTokens: 60,
       maxLength: 110,
       appendCta: true
     },
     threads: {
-      prompt: `美容サロン・エステ・整体の経営者向けに、テーマ「${theme.label}」のThreads投稿を日本語で1つ作成してください。Instagramより少し長めに、忙しさや集客の悩みへの共感、すぐ実践できる経営ノウハウ、無料AI診断を試したくなる穏やかな行動提案の順に書いてください。根拠のない成果保証、URL、リンク、ハッシュタグ、絵文字は含めないでください。昨日と同じコピーにしないでください。`,
+      prompt: `美容サロン・エステ・整体の経営者向けに、テーマ「${theme.label}」のThreads投稿を日本語で1つ作成してください。Instagramより少し長めに、忙しさや集客の悩みへの共感、すぐ実践できる経営ノウハウ、自店の課題を確認したくなる穏やかな行動提案の順に書いてください。根拠のない成果保証、URL、リンク、ハッシュタグ、絵文字は含めないでください。昨日と同じコピーにしないでください。`,
       maxTokens: 300,
       maxLength: 500,
       appendCta: true
