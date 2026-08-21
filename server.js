@@ -17,6 +17,7 @@ import jwt from 'jsonwebtoken';
 import bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import fetch from 'node-fetch';
+import { mkdir, writeFile } from 'fs/promises';
 import Stripe from 'stripe';
 import pkg from 'pg';
 import {
@@ -1082,23 +1083,80 @@ async function resolveBufferTextTargets(orgId) {
   }
 }
 
-async function generateSocialPost(platform) {
+const SOCIAL_THEME_ROTATION = [
+  { id: 'customer-acquisition', label: '新規客', headline: '新規客を増やす設計', subline: '投稿が予約につながらない理由を、AIが整理します。' },
+  { id: 'instagram', label: 'Instagram', headline: 'Instagram集客を再設計', subline: '頑張って投稿しても届かない理由を、AIが診断します。' },
+  { id: 'reviews', label: '口コミ', headline: '口コミを資産に変える', subline: '選ばれる理由を言語化して、次の来店につなげます。' },
+  { id: 'repeat-visits', label: 'リピート', headline: 'リピートが続く導線', subline: '一度きりで終わらない関係づくりを、AIが診断します。' },
+  { id: 'reservations', label: '予約', headline: '予約導線を見直す', subline: '空き枠が埋まらない理由を、AIが整理します。' },
+  { id: 'sales', label: '売上', headline: '売上をつくる集客設計', subline: 'やみくもな発信を、行動につながる設計へ。' },
+  { id: 'sns-operations', label: 'SNS運用', headline: 'SNS運用の迷いを減らす', subline: '何を投稿するかではなく、誰に届けるかをAIが診断。' },
+  { id: 'attraction', label: '集客', headline: 'AIが集客を変える', subline: 'いまの発信で足りないことを、AIが診断します。' }
+];
+
+const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL || 'https://lift-start.onrender.com';
+
+function getDailySocialTheme(date = new Date()) {
+  const dayIndex = Math.floor(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) / 86400000);
+  return SOCIAL_THEME_ROTATION[dayIndex % SOCIAL_THEME_ROTATION.length];
+}
+
+function socialVisualFileName(theme) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `lift-start-${theme.id}-${timestamp}-${uuidv4().slice(0, 8)}.png`;
+}
+
+async function generateDailyInstagramVisual(theme, instagramText) {
+  const imagePrompt = `Create a premium square Instagram feed visual for Japanese beauty salon, esthetic salon, and chiropractic clinic owners.\n\nPurpose: Stop scrolling and explain at a glance how AI improves ${theme.label} and customer acquisition.\n\nComposition: Strong professional editorial marketing design, black background, high-contrast yellow headline, electric blue AI analytics dashboard accents, a sophisticated Japanese small-business owner or salon consultation scene, clear hierarchy, large central short Japanese headline, supporting Japanese line, and a highly visible yellow CTA button near the lower third. Keep all text and important content safely centered.\n\nText to render exactly in Japanese:\nHeadline: ${theme.headline}\nSupport: ${theme.subline}\nCTA: 無料AI診断 → 今すぐチェック\n\nStyle: premium, modern, bold, photorealistic editorial campaign art combined with subtle data-interface elements; black, white, yellow, and blue only; readable typography; square 1:1 layout.\n\nAvoid: white background, plain text-only card, before-and-after claims, numerical performance claims, generic stock-photo look, excessive text, logos other than the plain text LIFT. START.`;
+
+  const imageResponse = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+      prompt: imagePrompt,
+      size: '1024x1024'
+    })
+  });
+
+  if (!imageResponse.ok) {
+    const errorText = await imageResponse.text();
+    throw new Error(`OpenAI image generation failed (${imageResponse.status}): ${errorText.slice(0, 300)}`);
+  }
+
+  const imageData = await imageResponse.json();
+  const base64Image = imageData?.data?.[0]?.b64_json;
+  if (!base64Image) {
+    throw new Error('OpenAI image generation returned no base64 image');
+  }
+
+  const directory = path.join(__dirname, 'public', 'social');
+  const fileName = socialVisualFileName(theme);
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, fileName), Buffer.from(base64Image, 'base64'));
+  return `${PUBLIC_APP_URL}/social/${fileName}`;
+}
+
+async function generateSocialPost(platform, theme = getDailySocialTheme()) {
   const cta = '無料AI診断: https://lift-start.onrender.com';
   const platformRules = {
     instagram: {
-      prompt: '美容サロン・エステ・整体のオーナー向けに、LIFT. START（月額4,980円からのAI集客・自動化ツール、無料AI診断 https://lift-start.onrender.com ）を紹介する集客投稿文を1つ作成してください。CTAのURLを必ず含めてください。',
+      prompt: `美容サロン・エステ・整体の店舗オーナー向けに、テーマ「${theme.label}」のInstagramキャプションを日本語で1つ作成してください。構成は必ず「問題提起 → 興味喚起 → 無料AI診断CTA」です。最初の1文で悩みを短く言い切り、次にAI診断で見直せる集客設計を具体的に説明し、最後に無料AI診断へ自然に誘導してください。根拠のない成果保証、誇大な数値、ハッシュタグ、絵文字は使わないでください。CTA URLは必ず1回だけ含めてください。昨日と同じ表現・コピーにしないでください。`,
       maxTokens: 300,
       maxLength: 1800,
       appendCta: false
     },
     x: {
-      prompt: '美容サロン・エステ・整体の経営者向けに、X用の集客投稿文を日本語で1つ作成してください。短文で、最初に問題提起を置き、運営改善に使える具体的な数値を1つだけ含め、根拠のない成果保証は書かないでください。無料診断のURL、リンク、ハッシュタグ、絵文字は含めないでください。',
+      prompt: `美容サロン・エステ・整体の経営者向けに、テーマ「${theme.label}」のX投稿を日本語で1つ作成してください。最初の1行を強い問題提起にし、1つの実務的な視点で続きを読みたくなる内容にしてください。根拠のない成果保証、URL、リンク、ハッシュタグ、絵文字は含めないでください。昨日と同じコピーにしないでください。`,
       maxTokens: 80,
       maxLength: 110,
       appendCta: true
     },
     threads: {
-      prompt: '美容サロン・エステ・整体の経営者向けに、Threads用の集客投稿文を日本語で1つ作成してください。Instagramより少し長めに、忙しさや集客の悩みへの共感、すぐ実践できる運営ノウハウ、穏やかな行動提案を含めてください。根拠のない成果保証、無料診断のURL、リンク、ハッシュタグ、絵文字は含めないでください。',
+      prompt: `美容サロン・エステ・整体の経営者向けに、テーマ「${theme.label}」のThreads投稿を日本語で1つ作成してください。Instagramより少し長めに、忙しさや集客の悩みへの共感、すぐ実践できる経営ノウハウ、無料AI診断を試したくなる穏やかな行動提案の順に書いてください。根拠のない成果保証、URL、リンク、ハッシュタグ、絵文字は含めないでください。昨日と同じコピーにしないでください。`,
       maxTokens: 300,
       maxLength: 500,
       appendCta: true
@@ -1116,7 +1174,7 @@ async function generateSocialPost(platform) {
     body: JSON.stringify({
       model: 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: rule.prompt }],
-      temperature: 0.7,
+      temperature: 0.85,
       max_tokens: rule.maxTokens
     })
   });
@@ -1282,15 +1340,17 @@ async function runDailySocialAutomation({ publishNow = false } = {}) {
       };
     }
 
+    const theme = getDailySocialTheme();
     const [instagramText, xText, threadsText] = await Promise.all([
-      generateSocialPost('instagram'),
-      generateSocialPost('x'),
-      generateSocialPost('threads')
+      generateSocialPost('instagram', theme),
+      generateSocialPost('x', theme),
+      generateSocialPost('threads', theme)
     ]);
+    const instagramImageUrl = await generateDailyInstagramVisual(theme, instagramText);
     const mode = publishNow ? 'shareNow' : 'addToQueue';
 
-    // Keep the established Instagram publisher unchanged so its required image asset is retained.
-    const instagramResult = await publishToBuffer(instagramText, instagramChannel.id, orgId, mode);
+    // Preserve the existing Buffer and Instagram publish path, replacing only the image asset with the daily generated creative.
+    const instagramResult = await publishToBuffer(instagramText, instagramChannel.id, orgId, mode, instagramImageUrl);
     const xResult = await publishTextToBuffer(xText, targets.x, orgId, mode);
     const threadsResult = await publishTextToBuffer(threadsText, targets.threads, orgId, mode);
 
@@ -1303,6 +1363,8 @@ async function runDailySocialAutomation({ publishNow = false } = {}) {
     const output = {
       success,
       mode,
+      theme: theme.id,
+      instagramImageUrl,
       generatedAt: new Date().toISOString(),
       results
     };
