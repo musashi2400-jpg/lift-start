@@ -930,11 +930,11 @@ async function resolveBufferTarget() {
   }
 }
 
-async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue') {
+async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue', imageUrl = null) {
   if (!BUFFER_ACCESS_TOKEN || !channelId) return { success: false, error: 'Token or channelId missing' };
   try {
-    // Note: Instagram requires an image asset for automated publishing. We attach a reliable public test image URL.
-    const sampleImageUrl = 'https://images.unsplash.com/photo-1742850541164-8eb59ecb3282?q=80&w=3388&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
+    // Preserve the established daily image behavior unless an explicit visual test asset is supplied.
+    const sampleImageUrl = imageUrl || 'https://images.unsplash.com/photo-1742850541164-8eb59ecb3282?q=80&w=3388&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
 
     const mutation = {
       query: `
@@ -1313,6 +1313,36 @@ async function runDailySocialAutomation({ publishNow = false } = {}) {
     return { success: false, error: error.message };
   }
 }
+
+// One-off visual test endpoint. It does not modify the existing daily automation or its image asset.
+const INSTAGRAM_VISUAL_TEST_IMAGE_URL = 'https://lift-start.onrender.com/instagram-ai-diagnosis-test.png';
+const INSTAGRAM_VISUAL_TEST_CAPTION = `投稿しているのに、新規のお客様につながらない。\n\n原因は「投稿数」ではなく、誰に・何を・どう届けるかの設計かもしれません。\n\nLIFT. STARTの無料AI診断で、あなたの店舗に合う集客の改善ポイントを整理します。\n\n無料AI診断 → https://lift-start.onrender.com`;
+
+app.post('/api/automation/test-instagram-visual', async (req, res) => {
+  try {
+    const { orgId, channel } = await resolveBufferTarget();
+    if (!orgId || !channel) {
+      return res.status(502).json({ success: false, error: 'Target Instagram lift_.start channel could not be resolved' });
+    }
+    const result = await publishToBuffer(
+      INSTAGRAM_VISUAL_TEST_CAPTION,
+      channel.id,
+      orgId,
+      'shareNow',
+      INSTAGRAM_VISUAL_TEST_IMAGE_URL
+    );
+    const publication = await summarizePublication(result, channel, true);
+    res.status(publication.success ? 200 : 502).json({
+      success: publication.success,
+      purpose: 'one-off Instagram visual approval test',
+      imageUrl: INSTAGRAM_VISUAL_TEST_IMAGE_URL,
+      publication
+    });
+  } catch (error) {
+    console.error('Instagram visual test error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Schedule daily execution (every 24 hours, and run once after startup for verification)
 setInterval(runDailySocialAutomation, 24 * 60 * 60 * 1000);
