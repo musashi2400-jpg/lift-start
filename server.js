@@ -1117,14 +1117,14 @@ async function resolveBufferTextTargets(orgId) {
 }
 
 const SOCIAL_THEME_ROTATION = [
-  { id: 'customer-acquisition', label: '新規客', headline: '新規客を増やす設計', subline: '投稿が予約につながらない理由を、AIが整理します。' },
-  { id: 'instagram', label: 'Instagram', headline: 'Instagram集客を再設計', subline: '頑張って投稿しても届かない理由を、AIが診断します。' },
-  { id: 'reviews', label: '口コミ', headline: '口コミを資産に変える', subline: '選ばれる理由を言語化して、次の来店につなげます。' },
-  { id: 'repeat-visits', label: 'リピート', headline: 'リピートが続く導線', subline: '一度きりで終わらない関係づくりを、AIが診断します。' },
-  { id: 'reservations', label: '予約', headline: '予約導線を見直す', subline: '空き枠が埋まらない理由を、AIが整理します。' },
-  { id: 'sales', label: '売上', headline: '売上をつくる集客設計', subline: 'やみくもな発信を、行動につながる設計へ。' },
-  { id: 'sns-operations', label: 'SNS運用', headline: 'SNS運用の迷いを減らす', subline: '何を投稿するかではなく、誰に届けるかをAIが診断。' },
-  { id: 'attraction', label: '集客', headline: 'AIが集客を変える', subline: 'いまの発信で足りないことを、AIが診断します。' }
+  { id: 'customer-acquisition', label: '新規客', problem: '新規客が来ない。', loss: '空き枠が、今日も売上にならない。', cause: '原因は発信量ではない。', solution: 'AIが来店までの導線を診断' },
+  { id: 'instagram', label: 'Instagram', problem: 'Instagram頑張ってるのに、予約が増えない。', loss: '投稿しても、空き枠が埋まらない。', cause: '原因は投稿数ではない。', solution: 'AIが集客ボトルネックを診断' },
+  { id: 'reviews', label: 'Google口コミ', problem: 'Google口コミが増えない。', loss: '良い施術でも、初来店の決め手がない。', cause: '原因は満足度だけではない。', solution: 'AIが口コミ導線を診断' },
+  { id: 'repeat-visits', label: 'リピーター', problem: '初回で終わる。リピーターが増えない。', loss: '毎月、新規集客に追われてしまう。', cause: '原因は技術だけではない。', solution: 'AIが再来店導線を診断' },
+  { id: 'reservations', label: '予約', problem: '空き枠が残る。', loss: '予約につながるはずの反応を逃している。', cause: '原因は集客不足とは限らない。', solution: 'AIが予約導線を診断' },
+  { id: 'sales', label: '売上', problem: 'SNSを頑張ってるのに、売上が伸びない。', loss: '時間をかけた投稿が、売上に変わらない。', cause: '原因は努力不足ではない。', solution: 'AIが売上につながる導線を診断' },
+  { id: 'sns-operations', label: 'SNS運用', problem: '今日、何を投稿すればいいか分からない。', loss: '迷う時間だけ、発信が止まっていく。', cause: '原因はネタ不足ではない。', solution: 'AIが投稿の優先順位を診断' },
+  { id: 'attraction', label: '競合差別化', problem: '競合店との差がつかない。', loss: '比較されたとき、選ばれる理由が伝わらない。', cause: '原因は価格ではない。', solution: 'AIが選ばれる理由を診断' }
 ];
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL || 'https://lift-start.onrender.com';
@@ -1140,7 +1140,7 @@ function socialVisualFileName(theme) {
 }
 
 async function generateDailyInstagramVisual(theme, instagramText) {
-  const imagePrompt = `Create a premium square Instagram feed visual for Japanese beauty salon, esthetic salon, and chiropractic clinic owners.\n\nPurpose: Stop scrolling and explain at a glance how AI improves ${theme.label} and customer acquisition.\n\nComposition: Strong professional editorial marketing design, black background, high-contrast yellow headline, electric blue AI analytics dashboard accents, a sophisticated Japanese small-business owner or salon consultation scene, clear hierarchy, large central short Japanese headline, supporting Japanese line, and a highly visible yellow CTA button near the lower third. Keep all text and important content safely centered.\n\nText to render exactly in Japanese:\nHeadline: ${theme.headline}\nSupport: ${theme.subline}\nCTA: 無料AI診断 → 今すぐチェック\n\nStyle: premium, modern, bold, photorealistic editorial campaign art combined with subtle data-interface elements; black, white, yellow, and blue only; readable typography; square 1:1 layout.\n\nAvoid: white background, plain text-only card, before-and-after claims, numerical performance claims, generic stock-photo look, excessive text, logos other than the plain text LIFT. START.`;
+  const imagePrompt = `Create a premium square Instagram feed advertisement for Japanese beauty salon, nail salon, esthetic salon, chiropractic clinic, and personal gym owners. This must be a conversion-focused ad, not a lifestyle photograph. The first image must communicate the complete message at a glance: pain point → business loss → true cause → AI solution → free diagnosis CTA.\n\nComposition: black background; large left-aligned Japanese typography in the upper half; a realistic Japanese shop owner on the right looking concerned at a tablet; an electric-blue AI analysis panel with a simple booking-funnel graph, calendar icon, booking-count visual, and one clearly visible bottleneck warning. Use the person and visual elements only to support the copy. Keep generous black negative space and a clear hierarchy.\n\nText to render exactly in Japanese, as four short blocks only:\n1. Main problem headline, very large yellow and white: ${theme.problem}\n2. Business loss, medium white: ${theme.loss}\n3. Cause and AI solution, bold white then yellow: ${theme.cause} ${theme.solution}\n4. Large yellow rounded CTA button: 無料AI診断 → 今すぐチェック\nBottom brand text: LIFT. START\n\nStyle: premium Japanese B2B performance-marketing campaign; black, white, saturated yellow, and electric blue only; sharp sans-serif Japanese typography; high contrast; credible AI analytics; every important text block safely centered and readable on a phone. Do not render any small dashboard labels beyond a simple booking number or icon.\n\nAvoid: ordinary beautiful shop photo, abstract AI art, generic stock-photo mood, decorative particles, extra or duplicated Japanese text, dense small interface copy, long paragraphs, before-and-after claims, numerical performance promises, weak copy such as 集客を効率化しませんか, logos other than LIFT. START.`;
 
   const imageResponse = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
@@ -1188,7 +1188,7 @@ async function generateSocialPost(platform, theme = getDailySocialTheme()) {
   const cta = getSocialDiagnosisCta(platform);
   const platformRules = {
     instagram: {
-      prompt: `美容サロン・エステ・整体の店舗オーナー向けに、テーマ「${theme.label}」のInstagramキャプションを日本語で1つ作成してください。構成は必ず「問題提起 → 興味喚起 → 行動提案」です。最初の1文で悩みを短く言い切り、次にAI診断で見直せる集客設計を具体的に説明し、最後に自店の課題を確認したくなる行動提案を入れてください。根拠のない成果保証、誇大な数値、URL、リンク、ハッシュタグ、絵文字は使わないでください。昨日と同じ表現・コピーにしないでください。`,
+      prompt: `美容室・ネイル・エステ・整体・パーソナルジムの店舗オーナー向けに、テーマ「${theme.label}」のInstagramキャプションを日本語で1つ作成してください。画像の訴求を深める広告文です。必ず次の順で、短い段落を4つ作ってください。1) 店舗オーナーが「自分の店のことだ」と思う強い悩みの一文、2) その悩みを放置したときの具体的な損失、3) 真の原因を「投稿数・努力不足ではない」と示し、LIFT. STARTのAI診断が見る集客ボトルネックを具体的に説明、4) 無料AI診断で最優先の改善点を確認するよう促す行動提案。テーマの参考要素は、悩み「${theme.problem}」、損失「${theme.loss}」、原因「${theme.cause}」、解決「${theme.solution}」です。根拠のない成果保証、誇大な数値、URL、リンク、ハッシュタグ、絵文字は使わないでください。CTAのURLはプログラム側で末尾に追加されます。昨日と同じ表現・コピーにしないでください。`,
       maxTokens: 300,
       maxLength: 1800,
       appendCta: true
