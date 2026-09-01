@@ -899,6 +899,20 @@ process.on('SIGTERM', async () => {
 
 const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN;
 
+// Bound only the social automation's external calls so a slow provider cannot hold the daily endpoint indefinitely.
+const SOCIAL_AUTOMATION_TIMEOUT_MS = 45_000;
+async function fetchSocialAutomation(url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SOCIAL_AUTOMATION_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+let dailyAutomationInFlight = false;
+
 async function resolveBufferTarget() {
   if (!BUFFER_ACCESS_TOKEN) return { orgId: null, channel: null };
   try {
@@ -906,7 +920,7 @@ async function resolveBufferTarget() {
     const accountQuery = {
       query: `query { account { id email name organizations { id name } } }`
     };
-    const accRes = await fetch('https://api.buffer.com', {
+    const accRes = await fetchSocialAutomation('https://api.buffer.com', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -929,7 +943,7 @@ async function resolveBufferTarget() {
       const channelsQuery = {
         query: `query { channels(input: { organizationId: "${org.id}" }) { id name service displayName isDisconnected isLocked isQueuePaused } }`
       };
-      const chanRes = await fetch('https://api.buffer.com', {
+      const chanRes = await fetchSocialAutomation('https://api.buffer.com', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1034,7 +1048,7 @@ async function publishToBuffer(text, channelId, orgId, mode = 'addToQueue', imag
       }
     };
 
-    const pubRes = await fetch('https://api.buffer.com', {
+    const pubRes = await fetchSocialAutomation('https://api.buffer.com', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1075,7 +1089,7 @@ async function resolveBufferTextTargets(orgId) {
     const query = {
       query: `query { channels(input: { organizationId: "${orgId}" }) { id name service displayName externalLink isDisconnected isLocked } }`
     };
-    const response = await fetch('https://api.buffer.com', {
+    const response = await fetchSocialAutomation('https://api.buffer.com', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1142,7 +1156,7 @@ function socialVisualFileName(theme) {
 async function generateDailyInstagramVisual(theme, instagramText) {
   const imagePrompt = `Create a premium square Instagram feed advertisement for Japanese beauty salon, nail salon, esthetic salon, chiropractic clinic, and personal gym owners. This must be a conversion-focused ad, not a lifestyle photograph. The first image must communicate the complete message at a glance: pain point → business loss → true cause → AI solution → free diagnosis CTA.\n\nComposition: black background; large left-aligned Japanese typography in the upper half; a realistic Japanese shop owner on the right looking concerned at a tablet; an electric-blue AI analysis panel with a simple booking-funnel graph, calendar icon, booking-count visual, and one clearly visible bottleneck warning. Use the person and visual elements only to support the copy. Keep generous black negative space and a clear hierarchy.\n\nText to render exactly in Japanese, as four short blocks only:\n1. Main problem headline, very large yellow and white: ${theme.problem}\n2. Business loss, medium white: ${theme.loss}\n3. Cause and AI solution, bold white then yellow: ${theme.cause} ${theme.solution}\n4. Large yellow rounded CTA button: 無料AI診断 → 今すぐチェック\nBottom brand text: LIFT. START\n\nStyle: premium Japanese B2B performance-marketing campaign; black, white, saturated yellow, and electric blue only; sharp sans-serif Japanese typography; high contrast; credible AI analytics; every important text block safely centered and readable on a phone. Do not render any small dashboard labels beyond a simple booking number or icon.\n\nAvoid: ordinary beautiful shop photo, abstract AI art, generic stock-photo mood, decorative particles, extra or duplicated Japanese text, dense small interface copy, long paragraphs, before-and-after claims, numerical performance promises, weak copy such as 集客を効率化しませんか, logos other than LIFT. START.`;
 
-  const imageResponse = await fetch('https://api.openai.com/v1/images/generations', {
+  const imageResponse = await fetchSocialAutomation('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1209,7 +1223,7 @@ async function generateSocialPost(platform, theme = getDailySocialTheme()) {
   const rule = platformRules[platform];
   if (!rule) throw new Error(`Unsupported social platform: ${platform}`);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchSocialAutomation('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1272,7 +1286,7 @@ async function publishTextToBuffer(text, channel, orgId, mode) {
         }
       }
     };
-    const response = await fetch('https://api.buffer.com', {
+    const response = await fetchSocialAutomation('https://api.buffer.com', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1296,7 +1310,7 @@ async function getBufferPost(postId) {
     const query = {
       query: `query { post(input: { id: ${JSON.stringify(postId)} }) { id status dueAt sentAt externalLink channelId channelService error { message } } }`
     };
-    const response = await fetch('https://api.buffer.com', {
+    const response = await fetchSocialAutomation('https://api.buffer.com', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1344,20 +1358,23 @@ async function summarizePublication(result, channel, publishNow) {
     : await getBufferPost(created.id);
   const post = observed || created;
   const status = post.status || created.status || 'unknown';
+  const externalUrl = post.externalLink || created.externalLink || null;
+  const published = status === 'sent' && Boolean(externalUrl);
   return {
-    success: status !== 'error',
+    success: publishNow ? published : status !== 'error',
+    published,
     channel: channelSummary(channel),
     bufferPostId: post.id || created.id,
     bufferStatus: status,
     publication: status === 'sent' ? 'published' : (status === 'error' ? 'failed' : 'scheduled'),
     dueAt: post.dueAt || created.dueAt || null,
     sentAt: post.sentAt || created.sentAt || null,
-    externalUrl: post.externalLink || created.externalLink || null,
+    externalUrl,
     error: post.error?.message || null
   };
 }
 
-async function runDailySocialAutomation({ publishNow = false } = {}) {
+async function runDailySocialAutomationUnlocked({ publishNow = false } = {}) {
   console.log('🤖 Running daily social automation for LIFT. START...');
   if (!BUFFER_ACCESS_TOKEN || !OPENAI_API_KEY) {
     const error = 'Buffer or OpenAI not fully configured for daily automation';
@@ -1417,6 +1434,18 @@ async function runDailySocialAutomation({ publishNow = false } = {}) {
   } catch (error) {
     console.error('Daily social automation error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+async function runDailySocialAutomation(options = {}) {
+  if (dailyAutomationInFlight) {
+    return { success: false, error: 'Daily social automation is already running' };
+  }
+  dailyAutomationInFlight = true;
+  try {
+    return await runDailySocialAutomationUnlocked(options);
+  } finally {
+    dailyAutomationInFlight = false;
   }
 }
 
